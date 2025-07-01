@@ -1,0 +1,8 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+- Absolutely no comments in code
+- dont generate unnecessary files (debug files)
+- dont generatye any MD files
