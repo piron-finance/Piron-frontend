@@ -20,15 +20,24 @@ const metadata = {
   icons: ["https://avatars.githubusercontent.com/u/37784886"],
 };
 
-createWeb3Modal({
-  wagmiConfig: config,
-  projectId,
-  enableAnalytics: true,
-  enableOnramp: true,
-  metadata,
-});
+let web3ModalInitialized = false;
+
+function initializeWeb3Modal() {
+  if (!web3ModalInitialized) {
+    createWeb3Modal({
+      wagmiConfig: config,
+      projectId,
+      enableAnalytics: true,
+      enableOnramp: true,
+      metadata,
+    });
+    web3ModalInitialized = true;
+  }
+}
 
 export function Web3ModalProvider({ children }: { children: React.ReactNode }) {
+  initializeWeb3Modal();
+
   return (
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
