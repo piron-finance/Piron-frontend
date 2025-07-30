@@ -4,7 +4,6 @@ import { useAuth } from "@clerk/nextjs";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { ConvexReactClient } from "convex/react";
 import { PropsWithChildren } from "react";
-import { useAuth as useCustomAuth } from "@/hooks/useAuth";
 
 const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
 if (!convexUrl) {
@@ -15,15 +14,10 @@ if (!convexUrl) {
 
 const convexClient = new ConvexReactClient(convexUrl);
 
-function AuthInitializer({ children }: PropsWithChildren) {
-  useCustomAuth();
-  return <>{children}</>;
-}
-
 export function ConvexClientProvider({ children }: PropsWithChildren) {
   return (
     <ConvexProviderWithClerk client={convexClient} useAuth={useAuth}>
-      <AuthInitializer>{children}</AuthInitializer>
+      {children}
     </ConvexProviderWithClerk>
   );
 }

@@ -1,633 +1,770 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import { useState, useMemo } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   TrendingUp,
   TrendingDown,
   DollarSign,
   PieChart,
-  BarChart3,
+  Target,
   Calendar,
   Clock,
-  Target,
   Award,
   ArrowUpRight,
   ArrowDownRight,
   Eye,
   Download,
-  Filter,
   RefreshCw,
   Building2,
   Percent,
-  Users,
   AlertCircle,
   CheckCircle,
   Timer,
+  Receipt,
+  BarChart3,
 } from "lucide-react";
+import Link from "next/link";
+import {
+  UserPosition,
+  Pool,
+  PoolStatus,
+  InstrumentType,
+  RiskLevel,
+  ApprovalStatus,
+  CouponPayment,
+} from "@/types";
+import {
+  formatCurrency,
+  formatPercentage,
+  formatDate,
+  formatDateTime,
+  calculateAPY,
+  getPoolStatusColor,
+  getPoolStatusLabel,
+  getRiskLevelColor,
+  getInstrumentTypeLabel,
+} from "@/lib/utils";
 
-// Mock portfolio data
-const portfolioData = {
-  totalValue: 125750,
-  totalInvested: 98500,
-  totalReturns: 27250,
-  returnsPercentage: 27.66,
-  activeInvestments: 5,
-  maturedInvestments: 3,
-  pendingReturns: 8420,
+const mockPortfolioData = {
+  totalInvested: "98500",
+  currentValue: "125750",
+  totalReturns: "27250",
+  pendingCoupons: "2150",
+  availableForWithdrawal: "18420",
 };
 
-const holdings = [
+const mockPositions: (UserPosition & { pool: Pool })[] = [
   {
-    id: "1",
-    poolName: "Nigerian Treasury Bills",
-    issuer: "Central Bank of Nigeria",
-    investedAmount: 25000,
-    currentValue: 31200,
-    returns: 6200,
-    returnsPercentage: 24.8,
-    apy: 24.2,
-    status: "INVESTED",
-    maturityDate: "2025-09-15",
-    investmentDate: "2025-03-01",
-    category: "Government",
-    riskLevel: "Very Low",
+    _id: "pos1",
+    userId: "user1",
+    poolId: "1",
+    contractAddress: "0x1234567890123456789012345678901234567890",
+    sharesOwned: "25000",
+    assetsDeposited: "25000",
+    depositTime: Date.now() - 7776000000,
+    currentValue: "31200",
+    expectedReturn: "31875",
+    discountEarned: "6875",
+    createdAt: Date.now() - 7776000000,
+    updatedAt: Date.now() - 86400000,
+    pool: {
+      _id: "1",
+      contractAddress: "0x1234567890123456789012345678901234567890",
+      managerAddress: "0x2345678901234567890123456789012345678901",
+      escrowAddress: "0x3456789012345678901234567890123456789012",
+      name: "US Treasury Bills Q4 2024",
+      symbol: "USTB-Q4",
+      asset: "USDC",
+      instrumentType: InstrumentType.DISCOUNTED,
+      status: PoolStatus.INVESTED,
+      targetRaise: "5000000",
+      totalRaised: "5000000",
+      actualInvested: "4750000",
+      discountRate: 850,
+      epochEndTime: Date.now() - 2592000000,
+      maturityDate: Date.now() + 5184000000,
+      issuer: "US Treasury",
+      riskLevel: RiskLevel.LOW,
+      minInvestment: "1000",
+      description:
+        "Short-term government securities backed by the full faith and credit of the United States Treasury.",
+      createdBy: "admin1",
+      approvalStatus: ApprovalStatus.APPROVED,
+      isActive: true,
+      createdAt: Date.now() - 10368000000,
+      updatedAt: Date.now() - 86400000,
+    },
   },
   {
-    id: "2",
-    poolName: "MTN Group Corporate Bond",
-    issuer: "MTN Group Limited",
-    investedAmount: 35000,
-    currentValue: 41850,
-    returns: 6850,
-    returnsPercentage: 19.57,
-    apy: 16.8,
-    status: "INVESTED",
-    maturityDate: "2026-12-31",
-    investmentDate: "2024-12-01",
-    category: "Corporate",
-    riskLevel: "Low",
+    _id: "pos2",
+    userId: "user1",
+    poolId: "2",
+    contractAddress: "0x4567890123456789012345678901234567890123",
+    sharesOwned: "35000",
+    assetsDeposited: "35000",
+    depositTime: Date.now() - 15552000000,
+    currentValue: "41850",
+    expectedReturn: "43400",
+    createdAt: Date.now() - 15552000000,
+    updatedAt: Date.now() - 172800000,
+    pool: {
+      _id: "2",
+      contractAddress: "0x4567890123456789012345678901234567890123",
+      managerAddress: "0x5678901234567890123456789012345678901234",
+      escrowAddress: "0x6789012345678901234567890123456789012345",
+      name: "Corporate Bonds Series A",
+      symbol: "CORP-A",
+      asset: "USDC",
+      instrumentType: InstrumentType.INTEREST_BEARING,
+      status: PoolStatus.INVESTED,
+      targetRaise: "15000000",
+      totalRaised: "15000000",
+      actualInvested: "14250000",
+      couponRates: [400, 400, 400, 400],
+      couponDates: [
+        Date.now() + 7776000000,
+        Date.now() + 15552000000,
+        Date.now() + 23328000000,
+        Date.now() + 31104000000,
+      ],
+      epochEndTime: Date.now() - 18144000000,
+      maturityDate: Date.now() + 15552000000,
+      issuer: "Fortune 500 Corporation",
+      riskLevel: RiskLevel.MEDIUM,
+      minInvestment: "5000",
+      description:
+        "24-month fixed-rate corporate bond from a leading technology company with quarterly coupon payments.",
+      createdBy: "admin1",
+      approvalStatus: ApprovalStatus.APPROVED,
+      isActive: true,
+      createdAt: Date.now() - 20736000000,
+      updatedAt: Date.now() - 172800000,
+    },
   },
   {
-    id: "3",
-    poolName: "Dangote Commercial Paper",
-    issuer: "Dangote Industries Limited",
-    investedAmount: 15000,
-    currentValue: 18750,
-    returns: 3750,
-    returnsPercentage: 25.0,
-    apy: 21.5,
-    status: "MATURED",
-    maturityDate: "2025-01-30",
-    investmentDate: "2024-08-15",
-    category: "Commercial",
-    riskLevel: "Medium",
-  },
-  {
-    id: "4",
-    poolName: "Access Bank Fixed Deposit",
-    issuer: "Access Bank PLC",
-    investedAmount: 12500,
-    currentValue: 14500,
-    returns: 2000,
-    returnsPercentage: 16.0,
-    apy: 14.5,
-    status: "MATURED",
-    maturityDate: "2024-12-15",
-    investmentDate: "2023-12-15",
-    category: "Banking",
-    riskLevel: "Very Low",
-  },
-  {
-    id: "5",
-    poolName: "Zenith Bank Commercial Paper",
-    issuer: "Zenith Bank PLC",
-    investedAmount: 11000,
-    currentValue: 13450,
-    returns: 2450,
-    returnsPercentage: 22.27,
-    apy: 19.8,
-    status: "FUNDING",
-    maturityDate: "2025-05-15",
-    investmentDate: "2025-02-15",
-    category: "Banking",
-    riskLevel: "Low",
+    _id: "pos3",
+    userId: "user1",
+    poolId: "3",
+    contractAddress: "0x7890123456789012345678901234567890123456",
+    sharesOwned: "15000",
+    assetsDeposited: "15000",
+    depositTime: Date.now() - 23328000000,
+    currentValue: "18750",
+    expectedReturn: "18750",
+    createdAt: Date.now() - 23328000000,
+    updatedAt: Date.now() - 43200000,
+    pool: {
+      _id: "3",
+      contractAddress: "0x7890123456789012345678901234567890123456",
+      managerAddress: "0x8901234567890123456789012345678901234567",
+      escrowAddress: "0x9012345678901234567890123456789012345678",
+      name: "Municipal Bonds 2024",
+      symbol: "MUNI-24",
+      asset: "USDC",
+      instrumentType: InstrumentType.INTEREST_BEARING,
+      status: PoolStatus.MATURED,
+      targetRaise: "8500000",
+      totalRaised: "8500000",
+      actualInvested: "8075000",
+      couponRates: [350, 350],
+      couponDates: [Date.now() - 7776000000, Date.now() - 86400000],
+      epochEndTime: Date.now() - 25920000000,
+      maturityDate: Date.now() - 86400000,
+      issuer: "City Municipal Authority",
+      riskLevel: RiskLevel.LOW,
+      minInvestment: "2500",
+      description:
+        "18-month municipal bond supporting local infrastructure development with semi-annual coupon payments.",
+      createdBy: "admin2",
+      approvalStatus: ApprovalStatus.APPROVED,
+      isActive: false,
+      createdAt: Date.now() - 28512000000,
+      updatedAt: Date.now() - 86400000,
+    },
   },
 ];
 
-const recentTransactions = [
+const mockCoupons: (CouponPayment & { poolName: string })[] = [
   {
-    id: "1",
-    type: "INVESTMENT",
-    poolName: "Nigerian Treasury Bills",
-    amount: 25000,
-    date: "2025-03-01",
-    status: "COMPLETED",
+    poolId: "2",
+    userId: "user1",
+    amount: "1400",
+    couponDate: Date.now() - 604800000,
+    claimed: false,
+    poolName: "Corporate Bonds Series A",
   },
   {
-    id: "2",
-    type: "RETURN",
-    poolName: "Dangote Commercial Paper",
-    amount: 18750,
-    date: "2025-01-30",
-    status: "COMPLETED",
+    poolId: "2",
+    userId: "user1",
+    amount: "1400",
+    couponDate: Date.now() - 8380800000,
+    claimed: true,
+    claimedAt: Date.now() - 8294400000,
+    txHash: "0xabcd1234...",
+    poolName: "Corporate Bonds Series A",
   },
   {
-    id: "3",
-    type: "INVESTMENT",
-    poolName: "MTN Group Corporate Bond",
-    amount: 35000,
-    date: "2024-12-01",
-    status: "COMPLETED",
-  },
-  {
-    id: "4",
-    type: "RETURN",
-    poolName: "Access Bank Fixed Deposit",
-    amount: 14500,
-    date: "2024-12-15",
-    status: "COMPLETED",
+    poolId: "3",
+    userId: "user1",
+    amount: "525",
+    couponDate: Date.now() - 15552000000,
+    claimed: true,
+    claimedAt: Date.now() - 15466000000,
+    txHash: "0xefgh5678...",
+    poolName: "Municipal Bonds 2024",
   },
 ];
-
-const formatCurrency = (amount: number) => {
-  if (amount >= 1000000000) return `$${(amount / 1000000000).toFixed(1)}B`;
-  if (amount >= 1000000) return `$${(amount / 1000000).toFixed(1)}M`;
-  if (amount >= 1000) return `$${(amount / 1000).toFixed(1)}K`;
-  return `$${amount.toLocaleString()}`;
-};
-
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case "FUNDING":
-      return "bg-blue-500/20 text-blue-300 border border-blue-500/30";
-    case "INVESTED":
-      return "bg-green-500/20 text-green-300 border border-green-500/30";
-    case "MATURED":
-      return "bg-purple-500/20 text-purple-300 border border-purple-500/30";
-    default:
-      return "bg-slate-500/20 text-slate-300 border border-slate-500/30";
-  }
-};
-
-const getStatusIcon = (status: string) => {
-  switch (status) {
-    case "FUNDING":
-      return Timer;
-    case "INVESTED":
-      return CheckCircle;
-    case "MATURED":
-      return Award;
-    default:
-      return Clock;
-  }
-};
-
-const getRiskColor = (risk: string) => {
-  switch (risk) {
-    case "Very Low":
-      return "text-emerald-400";
-    case "Low":
-      return "text-green-400";
-    case "Medium":
-      return "text-yellow-400";
-    case "High":
-      return "text-orange-400";
-    case "Very High":
-      return "text-red-400";
-    default:
-      return "text-slate-400";
-  }
-};
 
 export default function PortfolioPage() {
   const [selectedTab, setSelectedTab] = useState("overview");
-  const [selectedFilter, setSelectedFilter] = useState("all");
 
-  const filteredHoldings = holdings.filter((holding) => {
-    if (selectedFilter === "all") return true;
-    if (selectedFilter === "active")
-      return holding.status === "INVESTED" || holding.status === "FUNDING";
-    if (selectedFilter === "matured") return holding.status === "MATURED";
-    return true;
-  });
+  const totalInvested = parseFloat(mockPortfolioData.totalInvested);
+  const currentValue = parseFloat(mockPortfolioData.currentValue);
+  const totalReturns = currentValue - totalInvested;
+  const returnsPercentage =
+    totalInvested > 0 ? (totalReturns / totalInvested) * 100 : 0;
 
-  const tabs = [
-    { id: "overview", label: "Overview" },
-    { id: "holdings", label: "Holdings" },
-    { id: "transactions", label: "Transactions" },
-  ];
+  const activePositions = mockPositions.filter(
+    (p) =>
+      p.pool.status === PoolStatus.FUNDING ||
+      p.pool.status === PoolStatus.INVESTED
+  );
+  const maturedPositions = mockPositions.filter(
+    (p) => p.pool.status === PoolStatus.MATURED
+  );
+
+  const portfolioByRisk = useMemo(() => {
+    const riskDistribution = {
+      [RiskLevel.LOW]: 0,
+      [RiskLevel.MEDIUM]: 0,
+      [RiskLevel.HIGH]: 0,
+    };
+    mockPositions.forEach((position) => {
+      riskDistribution[position.pool.riskLevel] += parseFloat(
+        position.currentValue
+      );
+    });
+    return riskDistribution;
+  }, []);
+
+  const portfolioByType = useMemo(() => {
+    const typeDistribution = {
+      [InstrumentType.DISCOUNTED]: 0,
+      [InstrumentType.INTEREST_BEARING]: 0,
+    };
+    mockPositions.forEach((position) => {
+      typeDistribution[position.pool.instrumentType] += parseFloat(
+        position.currentValue
+      );
+    });
+    return typeDistribution;
+  }, []);
 
   return (
-    <div className="p-8">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-4xl font-bold text-white mb-3">Portfolio</h1>
-            <p className="text-lg text-slate-400">
-              Track your investments and performance
-            </p>
-          </div>
-          <div className="flex items-center space-x-4">
-            <button className="flex items-center space-x-2 px-4 py-2 bg-slate-800/50 hover:bg-slate-700/50 border border-slate-600/30 rounded-xl text-slate-300 transition-colors">
-              <RefreshCw className="w-4 h-4" />
-              <span>Refresh</span>
-            </button>
-            <button className="flex items-center space-x-2 px-4 py-2 bg-slate-800/50 hover:bg-slate-700/50 border border-slate-600/30 rounded-xl text-slate-300 transition-colors">
-              <Download className="w-4 h-4" />
-              <span>Export</span>
-            </button>
-          </div>
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-white">Portfolio</h1>
+          <p className="text-slate-400 mt-1">
+            Track your investments and returns across all pools
+          </p>
         </div>
-
-        {/* Portfolio Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-slate-800/60 backdrop-blur-xl border border-slate-700/40 rounded-3xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-emerald-500/20 rounded-xl flex items-center justify-center">
-                <DollarSign className="w-6 h-6 text-emerald-400/80" />
-              </div>
-              <div className="flex items-center space-x-1 text-emerald-400">
-                <TrendingUp className="w-4 h-4" />
-                <span className="text-sm font-medium">
-                  +{portfolioData.returnsPercentage}%
-                </span>
-              </div>
-            </div>
-            <div className="text-3xl font-bold text-white mb-1">
-              {formatCurrency(portfolioData.totalValue)}
-            </div>
-            <div className="text-sm text-slate-400">Total Portfolio Value</div>
-          </div>
-
-          <div className="bg-slate-800/60 backdrop-blur-xl border border-slate-700/40 rounded-3xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center">
-                <Target className="w-6 h-6 text-blue-400/80" />
-              </div>
-              <div className="text-slate-400 text-sm">Principal</div>
-            </div>
-            <div className="text-3xl font-bold text-white mb-1">
-              {formatCurrency(portfolioData.totalInvested)}
-            </div>
-            <div className="text-sm text-slate-400">Total Invested</div>
-          </div>
-
-          <div className="bg-slate-800/60 backdrop-blur-xl border border-slate-700/40 rounded-3xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-purple-500/20 rounded-xl flex items-center justify-center">
-                <TrendingUp className="w-6 h-6 text-purple-400/80" />
-              </div>
-              <div className="flex items-center space-x-1 text-purple-400">
-                <ArrowUpRight className="w-4 h-4" />
-                <span className="text-sm font-medium">
-                  +
-                  {(
-                    (portfolioData.totalReturns / portfolioData.totalInvested) *
-                    100
-                  ).toFixed(1)}
-                  %
-                </span>
-              </div>
-            </div>
-            <div className="text-3xl font-bold text-white mb-1">
-              {formatCurrency(portfolioData.totalReturns)}
-            </div>
-            <div className="text-sm text-slate-400">Total Returns</div>
-          </div>
-
-          <div className="bg-slate-800/60 backdrop-blur-xl border border-slate-700/40 rounded-3xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-amber-500/20 rounded-xl flex items-center justify-center">
-                <Clock className="w-6 h-6 text-amber-400/80" />
-              </div>
-              <div className="text-slate-400 text-sm">Pending</div>
-            </div>
-            <div className="text-3xl font-bold text-white mb-1">
-              {formatCurrency(portfolioData.pendingReturns)}
-            </div>
-            <div className="text-sm text-slate-400">Pending Returns</div>
-          </div>
-        </div>
-
-        {/* Tab Navigation */}
-        <div className="flex space-x-1 bg-slate-800/50 p-1 rounded-xl border border-slate-700/40">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setSelectedTab(tab.id)}
-              className={`flex-1 px-6 py-3 rounded-lg font-medium transition-colors ${
-                selectedTab === tab.id
-                  ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
-                  : "text-slate-400 hover:text-white hover:bg-slate-700/50"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="border-white/20">
+            <Download className="w-4 h-4 mr-2" />
+            Export
+          </Button>
+          <Button variant="outline" size="sm" className="border-white/20">
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Refresh
+          </Button>
         </div>
       </div>
 
-      {/* Tab Content */}
-      {selectedTab === "overview" && (
-        <div className="space-y-8">
-          {/* Portfolio Allocation */}
-          <div className="bg-slate-800/60 backdrop-blur-xl border border-slate-700/40 rounded-3xl p-8">
-            <h2 className="text-2xl font-bold text-white mb-6">
-              Portfolio Allocation
-            </h2>
-            <div className="grid lg:grid-cols-2 gap-8">
-              <div>
-                <h3 className="text-lg font-semibold text-slate-200 mb-4">
-                  By Category
-                </h3>
-                <div className="space-y-4">
-                  {["Government", "Corporate", "Commercial", "Banking"].map(
-                    (category) => {
-                      const categoryHoldings = holdings.filter(
-                        (h) => h.category === category
-                      );
-                      const categoryValue = categoryHoldings.reduce(
-                        (sum, h) => sum + h.currentValue,
-                        0
-                      );
-                      const percentage =
-                        (categoryValue / portfolioData.totalValue) * 100;
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <Card className="bg-slate-900/50 border-white/10">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-slate-300">
+              Total Invested
+            </CardTitle>
+            <DollarSign className="h-4 w-4 text-blue-400" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-white">
+              {formatCurrency(mockPortfolioData.totalInvested)}
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              Across {mockPositions.length} positions
+            </p>
+          </CardContent>
+        </Card>
 
-                      return (
-                        <div
-                          key={category}
-                          className="flex items-center justify-between"
-                        >
-                          <div className="flex items-center space-x-3">
-                            <div className="w-3 h-3 rounded-full bg-gradient-to-r from-purple-500 to-pink-500"></div>
-                            <span className="text-slate-300">{category}</span>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-slate-200 font-semibold">
-                              {formatCurrency(categoryValue)}
-                            </div>
-                            <div className="text-sm text-slate-400">
-                              {percentage.toFixed(1)}%
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    }
-                  )}
-                </div>
-              </div>
+        <Card className="bg-slate-900/50 border-white/10">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-slate-300">
+              Current Value
+            </CardTitle>
+            <TrendingUp className="h-4 w-4 text-green-400" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-white">
+              {formatCurrency(mockPortfolioData.currentValue)}
+            </div>
+            <p className={`text-xs text-green-400 mt-1 flex items-center`}>
+              <ArrowUpRight className="w-3 h-3 mr-1" />
+              {formatPercentage(returnsPercentage)} total return
+            </p>
+          </CardContent>
+        </Card>
 
-              <div>
-                <h3 className="text-lg font-semibold text-slate-200 mb-4">
-                  By Status
-                </h3>
-                <div className="space-y-4">
-                  {["INVESTED", "MATURED", "FUNDING"].map((status) => {
-                    const statusHoldings = holdings.filter(
-                      (h) => h.status === status
-                    );
-                    const statusValue = statusHoldings.reduce(
-                      (sum, h) => sum + h.currentValue,
-                      0
-                    );
-                    const percentage =
-                      (statusValue / portfolioData.totalValue) * 100;
+        <Card className="bg-slate-900/50 border-white/10">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-slate-300">
+              Pending Coupons
+            </CardTitle>
+            <Receipt className="h-4 w-4 text-yellow-400" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-white">
+              {formatCurrency(mockPortfolioData.pendingCoupons)}
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              {mockCoupons.filter((c) => !c.claimed).length} available
+            </p>
+          </CardContent>
+        </Card>
 
-                    return (
-                      <div
-                        key={status}
-                        className="flex items-center justify-between"
-                      >
-                        <div className="flex items-center space-x-3">
-                          <div className="w-3 h-3 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500"></div>
-                          <span className="text-slate-300">{status}</span>
+        <Card className="bg-slate-900/50 border-white/10">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-slate-300">
+              Available to Withdraw
+            </CardTitle>
+            <Target className="h-4 w-4 text-purple-400" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-white">
+              {formatCurrency(mockPortfolioData.availableForWithdrawal)}
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              From {maturedPositions.length} matured pools
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Tabs
+        value={selectedTab}
+        onValueChange={setSelectedTab}
+        className="space-y-6"
+      >
+        <TabsList className="grid w-full grid-cols-4 bg-slate-900/50 border border-white/10">
+          <TabsTrigger
+            value="overview"
+            className="text-slate-300 data-[state=active]:text-white"
+          >
+            Overview
+          </TabsTrigger>
+          <TabsTrigger
+            value="positions"
+            className="text-slate-300 data-[state=active]:text-white"
+          >
+            Positions
+          </TabsTrigger>
+          <TabsTrigger
+            value="coupons"
+            className="text-slate-300 data-[state=active]:text-white"
+          >
+            Coupons
+          </TabsTrigger>
+          <TabsTrigger
+            value="analytics"
+            className="text-slate-300 data-[state=active]:text-white"
+          >
+            Analytics
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="bg-slate-900/50 border-white/10">
+              <CardHeader>
+                <CardTitle className="text-white">
+                  Portfolio Distribution by Risk
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {Object.entries(portfolioByRisk).map(([risk, value]) => {
+                  const percentage =
+                    currentValue > 0 ? (value / currentValue) * 100 : 0;
+                  return (
+                    <div key={risk} className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant="outline"
+                            className={`text-xs ${getRiskLevelColor(risk as RiskLevel)}`}
+                          >
+                            {risk} Risk
+                          </Badge>
                         </div>
                         <div className="text-right">
-                          <div className="text-slate-200 font-semibold">
-                            {formatCurrency(statusValue)}
-                          </div>
-                          <div className="text-sm text-slate-400">
-                            {percentage.toFixed(1)}%
-                          </div>
+                          <p className="text-sm font-medium text-white">
+                            {formatCurrency(value.toString())}
+                          </p>
+                          <p className="text-xs text-slate-400">
+                            {formatPercentage(percentage)}
+                          </p>
                         </div>
+                      </div>
+                      <Progress
+                        value={percentage}
+                        className="h-2 bg-slate-800"
+                      />
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+
+            <Card className="bg-slate-900/50 border-white/10">
+              <CardHeader>
+                <CardTitle className="text-white">
+                  Portfolio Distribution by Type
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {Object.entries(portfolioByType).map(([type, value]) => {
+                  const percentage =
+                    currentValue > 0 ? (value / currentValue) * 100 : 0;
+                  return (
+                    <div key={type} className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant="outline"
+                            className="text-xs text-slate-300 border-slate-600"
+                          >
+                            {getInstrumentTypeLabel(
+                              Number(type) as InstrumentType
+                            )}
+                          </Badge>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-medium text-white">
+                            {formatCurrency(value.toString())}
+                          </p>
+                          <p className="text-xs text-slate-400">
+                            {formatPercentage(percentage)}
+                          </p>
+                        </div>
+                      </div>
+                      <Progress
+                        value={percentage}
+                        className="h-2 bg-slate-800"
+                      />
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="positions" className="space-y-6">
+          <div className="space-y-4">
+            {mockPositions.map((position) => {
+              const positionReturns =
+                parseFloat(position.currentValue) -
+                parseFloat(position.assetsDeposited);
+              const positionReturnsPercentage =
+                parseFloat(position.assetsDeposited) > 0
+                  ? (positionReturns / parseFloat(position.assetsDeposited)) *
+                    100
+                  : 0;
+              const daysInvested = Math.floor(
+                (Date.now() - position.depositTime) / (1000 * 60 * 60 * 24)
+              );
+              const apy = calculateAPY(
+                position.currentValue,
+                position.assetsDeposited,
+                daysInvested
+              );
+
+              return (
+                <Card
+                  key={position._id}
+                  className="bg-slate-900/50 border-white/10"
+                >
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="space-y-2">
+                        <h3 className="text-lg font-semibold text-white">
+                          {position.pool.name}
+                        </h3>
+                        <p className="text-slate-400">{position.pool.issuer}</p>
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant="outline"
+                            className={`text-xs ${getPoolStatusColor(position.pool.status)}`}
+                          >
+                            {getPoolStatusLabel(position.pool.status)}
+                          </Badge>
+                          <Badge
+                            variant="outline"
+                            className={`text-xs ${getRiskLevelColor(position.pool.riskLevel)}`}
+                          >
+                            {position.pool.riskLevel} Risk
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-2xl font-bold text-white">
+                          {formatCurrency(position.currentValue)}
+                        </p>
+                        <p
+                          className={`text-sm flex items-center justify-end ${
+                            positionReturns >= 0
+                              ? "text-green-400"
+                              : "text-red-400"
+                          }`}
+                        >
+                          {positionReturns >= 0 ? (
+                            <ArrowUpRight className="w-3 h-3 mr-1" />
+                          ) : (
+                            <ArrowDownRight className="w-3 h-3 mr-1" />
+                          )}
+                          {formatPercentage(
+                            Math.abs(positionReturnsPercentage)
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div>
+                        <span className="text-slate-400">Invested</span>
+                        <p className="font-semibold text-white">
+                          {formatCurrency(position.assetsDeposited)}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-slate-400">Returns</span>
+                        <p
+                          className={`font-semibold ${
+                            positionReturns >= 0
+                              ? "text-green-400"
+                              : "text-red-400"
+                          }`}
+                        >
+                          {formatCurrency(Math.abs(positionReturns).toString())}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-slate-400">APY</span>
+                        <p className="font-semibold text-blue-400">
+                          {formatPercentage(apy)}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-slate-400">Maturity</span>
+                        <p className="font-semibold text-white">
+                          {formatDate(position.pool.maturityDate)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 mt-4">
+                      <Button
+                        asChild
+                        variant="outline"
+                        size="sm"
+                        className="border-white/20 hover:border-white/40"
+                      >
+                        <Link href={`/pools/${position.pool._id}`}>
+                          <Eye className="w-4 h-4 mr-2" />
+                          View Pool
+                        </Link>
+                      </Button>
+                      {position.pool.status === PoolStatus.MATURED && (
+                        <Button
+                          size="sm"
+                          className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
+                        >
+                          Withdraw
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="coupons" className="space-y-6">
+          <div className="space-y-4">
+            {mockCoupons.map((coupon, index) => (
+              <Card key={index} className="bg-slate-900/50 border-white/10">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                          coupon.claimed
+                            ? "bg-green-500/20 text-green-400"
+                            : "bg-yellow-500/20 text-yellow-400"
+                        }`}
+                      >
+                        {coupon.claimed ? (
+                          <CheckCircle className="w-5 h-5" />
+                        ) : (
+                          <Clock className="w-5 h-5" />
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-medium text-white">
+                          {coupon.poolName}
+                        </p>
+                        <p className="text-sm text-slate-400">
+                          Due: {formatDate(coupon.couponDate)}
+                        </p>
+                        {coupon.claimed && coupon.claimedAt && (
+                          <p className="text-xs text-green-400">
+                            Claimed: {formatDate(coupon.claimedAt)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-white">
+                        {formatCurrency(coupon.amount)}
+                      </p>
+                      {!coupon.claimed ? (
+                        <Button
+                          size="sm"
+                          className="mt-2 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600"
+                        >
+                          Claim
+                        </Button>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="bg-green-500/20 text-green-300 border-green-500/30"
+                        >
+                          Claimed
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="analytics" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card className="bg-slate-900/50 border-white/10">
+              <CardHeader>
+                <CardTitle className="text-white">
+                  Performance Metrics
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Total Return</span>
+                  <span className="font-semibold text-green-400">
+                    {formatCurrency(totalReturns.toString())}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Return Percentage</span>
+                  <span className="font-semibold text-green-400">
+                    {formatPercentage(returnsPercentage)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Active Positions</span>
+                  <span className="font-semibold text-white">
+                    {activePositions.length}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Matured Positions</span>
+                  <span className="font-semibold text-white">
+                    {maturedPositions.length}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Pending Coupons</span>
+                  <span className="font-semibold text-yellow-400">
+                    {mockCoupons.filter((c) => !c.claimed).length}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-slate-900/50 border-white/10">
+              <CardHeader>
+                <CardTitle className="text-white">
+                  Portfolio Allocation
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <h4 className="text-sm font-medium text-slate-300 mb-3">
+                    By Risk Level
+                  </h4>
+                  {Object.entries(portfolioByRisk).map(([risk, value]) => {
+                    const percentage =
+                      currentValue > 0 ? (value / currentValue) * 100 : 0;
+                    return (
+                      <div
+                        key={risk}
+                        className="flex justify-between items-center mb-2"
+                      >
+                        <span className="text-slate-400">{risk} Risk</span>
+                        <span className="font-semibold text-white">
+                          {formatPercentage(percentage)}
+                        </span>
                       </div>
                     );
                   })}
                 </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Performance Metrics */}
-          <div className="bg-slate-800/60 backdrop-blur-xl border border-slate-700/40 rounded-3xl p-8">
-            <h2 className="text-2xl font-bold text-white mb-6">
-              Performance Metrics
-            </h2>
-            <div className="grid md:grid-cols-3 gap-6">
-              <div className="text-center">
-                <div className="text-3xl font-bold text-emerald-400 mb-2">
-                  {(
-                    (portfolioData.totalReturns / portfolioData.totalInvested) *
-                    100
-                  ).toFixed(1)}
-                  %
-                </div>
-                <div className="text-slate-400">Average Return</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-blue-400 mb-2">
-                  {portfolioData.activeInvestments}
-                </div>
-                <div className="text-slate-400">Active Investments</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-purple-400 mb-2">
-                  {portfolioData.maturedInvestments}
-                </div>
-                <div className="text-slate-400">Completed Investments</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {selectedTab === "holdings" && (
-        <div className="space-y-6">
-          {/* Filter */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <select
-                value={selectedFilter}
-                onChange={(e) => setSelectedFilter(e.target.value)}
-                className="px-4 py-2 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:border-purple-500/50 focus:outline-none"
-              >
-                <option value="all">All Holdings</option>
-                <option value="active">Active</option>
-                <option value="matured">Matured</option>
-              </select>
-            </div>
-            <div className="text-slate-400">
-              {filteredHoldings.length} of {holdings.length} holdings
-            </div>
-          </div>
-
-          {/* Holdings List */}
-          <div className="space-y-4">
-            {filteredHoldings.map((holding) => {
-              const StatusIcon = getStatusIcon(holding.status);
-
-              return (
-                <div
-                  key={holding.id}
-                  className="bg-slate-800/60 backdrop-blur-xl border border-slate-700/40 rounded-3xl p-6 hover:border-slate-600/60 transition-colors"
-                >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-3 mb-2">
-                        <h3 className="text-xl font-bold text-slate-100">
-                          {holding.poolName}
-                        </h3>
-                        <span
-                          className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(holding.status)}`}
-                        >
-                          {holding.status}
-                        </span>
-                      </div>
-                      <p className="text-slate-400 mb-1">{holding.issuer}</p>
-                      <div className="flex items-center space-x-4 text-sm text-slate-500">
-                        <span>{holding.category}</span>
-                        <span>•</span>
-                        <span className={getRiskColor(holding.riskLevel)}>
-                          {holding.riskLevel} Risk
-                        </span>
-                        <span>•</span>
-                        <span>{holding.apy}% APY</span>
-                      </div>
-                    </div>
-
-                    <div className="text-right">
-                      <div className="text-2xl font-bold text-slate-100 mb-1">
-                        {formatCurrency(holding.currentValue)}
-                      </div>
+                <div className="pt-4 border-t border-slate-700">
+                  <h4 className="text-sm font-medium text-slate-300 mb-3">
+                    By Instrument Type
+                  </h4>
+                  {Object.entries(portfolioByType).map(([type, value]) => {
+                    const percentage =
+                      currentValue > 0 ? (value / currentValue) * 100 : 0;
+                    return (
                       <div
-                        className={`text-sm font-medium ${holding.returns >= 0 ? "text-emerald-400" : "text-red-400"}`}
+                        key={type}
+                        className="flex justify-between items-center mb-2"
                       >
-                        {holding.returns >= 0 ? "+" : ""}
-                        {formatCurrency(holding.returns)} (
-                        {holding.returnsPercentage >= 0 ? "+" : ""}
-                        {holding.returnsPercentage.toFixed(1)}%)
+                        <span className="text-slate-400">
+                          {getInstrumentTypeLabel(
+                            Number(type) as InstrumentType
+                          )}
+                        </span>
+                        <span className="font-semibold text-white">
+                          {formatPercentage(percentage)}
+                        </span>
                       </div>
-                    </div>
-                  </div>
-
-                  <div className="grid md:grid-cols-4 gap-6">
-                    <div>
-                      <div className="text-sm text-slate-400 mb-1">
-                        Invested
-                      </div>
-                      <div className="text-lg font-semibold text-slate-200">
-                        {formatCurrency(holding.investedAmount)}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-slate-400 mb-1">
-                        Investment Date
-                      </div>
-                      <div className="text-lg font-semibold text-slate-200">
-                        {new Date(holding.investmentDate).toLocaleDateString()}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-slate-400 mb-1">
-                        Maturity Date
-                      </div>
-                      <div className="text-lg font-semibold text-slate-200">
-                        {new Date(holding.maturityDate).toLocaleDateString()}
-                      </div>
-                    </div>
-                    <div className="flex justify-end">
-                      <Link
-                        href={`/pools/${holding.id}`}
-                        className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-purple-600/90 to-pink-600/90 hover:from-purple-500/90 hover:to-pink-500/90 text-white font-medium rounded-lg transition-colors"
-                      >
-                        <Eye className="w-4 h-4" />
-                        <span>View</span>
-                      </Link>
-                    </div>
-                  </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
+              </CardContent>
+            </Card>
           </div>
-        </div>
-      )}
-
-      {selectedTab === "transactions" && (
-        <div className="space-y-6">
-          <div className="bg-slate-800/60 backdrop-blur-xl border border-slate-700/40 rounded-3xl p-8">
-            <h2 className="text-2xl font-bold text-white mb-6">
-              Recent Transactions
-            </h2>
-            <div className="space-y-4">
-              {recentTransactions.map((transaction) => (
-                <div
-                  key={transaction.id}
-                  className="flex items-center justify-between p-4 bg-slate-900/30 rounded-xl border border-slate-600/20"
-                >
-                  <div className="flex items-center space-x-4">
-                    <div
-                      className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        transaction.type === "INVESTMENT"
-                          ? "bg-blue-500/20"
-                          : "bg-emerald-500/20"
-                      }`}
-                    >
-                      {transaction.type === "INVESTMENT" ? (
-                        <ArrowDownRight
-                          className={`w-5 h-5 ${
-                            transaction.type === "INVESTMENT"
-                              ? "text-blue-400"
-                              : "text-emerald-400"
-                          }`}
-                        />
-                      ) : (
-                        <ArrowUpRight className="w-5 h-5 text-emerald-400" />
-                      )}
-                    </div>
-                    <div>
-                      <div className="font-semibold text-slate-200">
-                        {transaction.type === "INVESTMENT"
-                          ? "Investment"
-                          : "Return"}
-                      </div>
-                      <div className="text-sm text-slate-400">
-                        {transaction.poolName}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div
-                      className={`font-bold text-lg ${
-                        transaction.type === "INVESTMENT"
-                          ? "text-blue-400"
-                          : "text-emerald-400"
-                      }`}
-                    >
-                      {transaction.type === "INVESTMENT" ? "-" : "+"}
-                      {formatCurrency(transaction.amount)}
-                    </div>
-                    <div className="text-sm text-slate-400">
-                      {new Date(transaction.date).toLocaleDateString()}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

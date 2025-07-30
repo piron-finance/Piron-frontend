@@ -1,397 +1,352 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import { useState, useMemo } from "react";
+import { PoolCard } from "@/components/pools/pool-card";
 import {
-  Search,
+  PoolFiltersComponent,
+  PoolFilters,
+} from "@/components/pools/pool-filters";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
   TrendingUp,
-  Clock,
-  Users,
   DollarSign,
   Target,
-  Calendar,
-  ArrowUpRight,
-  Timer,
-  CheckCircle,
-  Award,
-  AlertCircle,
-  Percent,
-  Building2,
+  Users,
+  Plus,
+  BarChart3,
+  Loader2,
+  RefreshCw,
 } from "lucide-react";
+import Link from "next/link";
+import { PoolStatus, InstrumentType } from "@/types";
+import { formatCurrency, formatPercentage } from "@/lib/utils";
+import {
+  useRegistryContract,
+  useMultiplePoolContracts,
+  useFactoryContract,
+} from "@/hooks/useContracts";
+import { useAccount } from "wagmi";
 
-const poolsData = [
-  {
-    id: "1",
-    name: "Nigerian Treasury Bills",
-    issuer: "Central Bank of Nigeria",
-    expectedAPY: 24.2,
-    targetRaise: 5000000,
-    totalRaised: 4250000,
-    maturityDate: "2025-09-15",
-    timeRemaining: "6 days",
-    minimumInvestment: 1000,
-    participants: 1247,
-    status: "FUNDING",
-    category: "Government",
-    description:
-      "Short-term government securities backed by the full faith and credit of Nigeria",
+const mockUserPositions = {
+  "1": {
+    sharesOwned: "2500",
+    currentValue: "2500",
+    expectedReturn: "2712.50",
   },
-  {
-    id: "2",
-    name: "MTN Group Corporate Bond",
-    issuer: "MTN Group Limited",
-    expectedAPY: 16.8,
-    targetRaise: 15000000,
-    totalRaised: 15000000,
-    maturityDate: "2026-12-31",
-    timeRemaining: "Active",
-    minimumInvestment: 5000,
-    participants: 892,
-    status: "INVESTED",
-    category: "Corporate",
-    description:
-      "24-month fixed-rate corporate bond from Africa's leading telecommunications company",
+  "3": {
+    sharesOwned: "5000",
+    currentValue: "5000",
+    expectedReturn: "5350.00",
   },
-  {
-    id: "3",
-    name: "Dangote Commercial Paper",
-    issuer: "Dangote Industries Limited",
-    expectedAPY: 21.5,
-    targetRaise: 8500000,
-    totalRaised: 2100000,
-    maturityDate: "2025-06-30",
-    timeRemaining: "12 days",
-    minimumInvestment: 2500,
-    participants: 634,
-    status: "FUNDING",
-    category: "Commercial",
-    description:
-      "180-day commercial paper from Nigeria's largest industrial conglomerate",
-  },
-  {
-    id: "4",
-    name: "Access Bank Fixed Deposit",
-    issuer: "Access Bank PLC",
-    expectedAPY: 14.5,
-    targetRaise: 3000000,
-    totalRaised: 3000000,
-    maturityDate: "2025-12-15",
-    timeRemaining: "Completed",
-    minimumInvestment: 1500,
-    participants: 456,
-    status: "MATURED",
-    category: "Banking",
-    description: "12-month fixed deposit certificate with guaranteed returns",
-  },
-  {
-    id: "5",
-    name: "Lafarge Cement Bond",
-    issuer: "Lafarge Africa PLC",
-    expectedAPY: 18.2,
-    targetRaise: 12000000,
-    totalRaised: 850000,
-    maturityDate: "2027-08-31",
-    timeRemaining: "28 days",
-    minimumInvestment: 10000,
-    participants: 89,
-    status: "FUNDING",
-    category: "Infrastructure",
-    description:
-      "36-month infrastructure bond supporting cement production expansion",
-  },
-  {
-    id: "6",
-    name: "Zenith Bank Commercial Paper",
-    issuer: "Zenith Bank PLC",
-    expectedAPY: 19.8,
-    targetRaise: 6000000,
-    totalRaised: 1200000,
-    maturityDate: "2025-05-15",
-    timeRemaining: "4 days",
-    minimumInvestment: 5000,
-    participants: 234,
-    status: "FUNDING",
-    category: "Banking",
-    description:
-      "90-day short-term commercial paper from top-tier Nigerian bank",
-  },
-];
-
-const formatCurrency = (amount: number) => {
-  if (amount >= 1000000000) return `$${(amount / 1000000000).toFixed(1)}B`;
-  if (amount >= 1000000) return `$${(amount / 1000000).toFixed(1)}M`;
-  if (amount >= 1000) return `$${(amount / 1000).toFixed(1)}K`;
-  return `$${amount.toLocaleString()}`;
-};
-
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case "FUNDING":
-      return "bg-blue-500/20 text-blue-300 border border-blue-500/30";
-    case "INVESTED":
-      return "bg-green-500/20 text-green-300 border border-green-500/30";
-    case "MATURED":
-      return "bg-purple-500/20 text-purple-300 border border-purple-500/30";
-    default:
-      return "bg-slate-500/20 text-slate-300 border border-slate-500/30";
-  }
-};
-
-const getStatusIcon = (status: string) => {
-  switch (status) {
-    case "FUNDING":
-      return Timer;
-    case "INVESTED":
-      return CheckCircle;
-    case "MATURED":
-      return Award;
-    default:
-      return Clock;
-  }
 };
 
 export default function PoolsPage() {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("All");
-  const [selectedStatus, setSelectedStatus] = useState("All");
+  const { isConnected } = useAccount();
+  const [filters, setFilters] = useState<PoolFilters>({
+    search: "",
+    status: "all",
+    instrumentType: "all",
+    riskLevel: "all",
+    minAPY: "",
+    maxAPY: "",
+  });
+  const [refreshing, setRefreshing] = useState(false);
 
-  const categories = [
-    "All",
-    "Government",
-    "Corporate",
-    "Commercial",
-    "Banking",
-    "Infrastructure",
-  ];
-  const statuses = ["All", "FUNDING", "INVESTED", "MATURED"];
+  const {
+    activePools,
+    allPools,
+    isLoadingActivePools,
+    refetch: refetchRegistry,
+  } = useRegistryContract();
+  const {
+    poolCount,
+    isLoadingPoolCount,
+    refetch: refetchFactory,
+  } = useFactoryContract();
 
-  const filteredPools = poolsData
-    .filter((pool) => {
-      const matchesSearch =
-        pool.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        pool.issuer.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesCategory =
-        selectedCategory === "All" || pool.category === selectedCategory;
-      const matchesStatus =
-        selectedStatus === "All" || pool.status === selectedStatus;
+  const { pools, isLoading: isLoadingPools } = useMultiplePoolContracts(
+    (allPools as `0x${string}`[]) || []
+  );
 
-      return matchesSearch && matchesCategory && matchesStatus;
-    })
-    .sort((a, b) => b.expectedAPY - a.expectedAPY);
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([refetchRegistry(), refetchFactory()]);
+    } catch (error) {
+      console.error("Error refreshing data:", error);
+    }
+    setRefreshing(false);
+  };
+
+  const filteredPools = useMemo(() => {
+    if (!pools) return [];
+
+    return pools.filter((pool) => {
+      if (filters.search) {
+        const searchTerm = filters.search.toLowerCase();
+        if (
+          !pool.name.toLowerCase().includes(searchTerm) &&
+          !pool.issuer.toLowerCase().includes(searchTerm) &&
+          !pool.description?.toLowerCase().includes(searchTerm)
+        ) {
+          return false;
+        }
+      }
+
+      if (filters.status !== "all" && pool.status !== Number(filters.status)) {
+        return false;
+      }
+
+      if (
+        filters.instrumentType !== "all" &&
+        pool.instrumentType !== Number(filters.instrumentType)
+      ) {
+        return false;
+      }
+
+      if (filters.riskLevel !== "all" && pool.riskLevel !== filters.riskLevel) {
+        return false;
+      }
+
+      const expectedAPY =
+        pool.instrumentType === InstrumentType.DISCOUNTED && pool.discountRate
+          ? pool.discountRate / 100
+          : pool.couponRates
+            ? pool.couponRates.reduce((sum, rate) => sum + rate, 0) / 100
+            : 0;
+
+      if (filters.minAPY && expectedAPY < parseFloat(filters.minAPY)) {
+        return false;
+      }
+
+      if (filters.maxAPY && expectedAPY > parseFloat(filters.maxAPY)) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [pools, filters]);
+
+  const totalTVL =
+    pools?.reduce((sum, pool) => sum + parseFloat(pool.totalRaised), 0) || 0;
+
+  const activePoolsCount =
+    pools?.filter(
+      (pool) =>
+        pool.status === PoolStatus.FUNDING ||
+        pool.status === PoolStatus.INVESTED
+    ).length || 0;
+
+  const totalPools = pools?.length || 0;
+
+  const averageAPY = pools?.length
+    ? pools.reduce((sum, pool) => {
+        const apy =
+          pool.instrumentType === InstrumentType.DISCOUNTED && pool.discountRate
+            ? pool.discountRate / 100
+            : pool.couponRates
+              ? pool.couponRates.reduce((sum, rate) => sum + rate, 0) / 100
+              : 0;
+        return sum + apy;
+      }, 0) / pools.length
+    : 0;
+
+  const isLoading =
+    isLoadingActivePools || isLoadingPools || isLoadingPoolCount;
+
+  if (!isConnected) {
+    return (
+      <div className="p-6">
+        <Card className="bg-slate-900/50 border-white/10">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <div className="w-16 h-16 bg-purple-500/20 rounded-full flex items-center justify-center mb-4">
+              <Users className="w-8 h-8 text-purple-400" />
+            </div>
+            <h3 className="text-xl font-semibold text-white mb-2">
+              Connect Your Wallet
+            </h3>
+            <p className="text-slate-400 text-center mb-6">
+              Please connect your wallet to view and interact with investment
+              pools.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-8">
-      {/* Header */}
-      <div className="mb-12">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-4xl font-bold text-white mb-3">
-              Investment Pools
-            </h1>
-            <p className="text-lg text-slate-400">
-              Discover high-yield tokenized securities from trusted issuers
-            </p>
-          </div>
-          <div className="flex items-center space-x-6">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-white">
-                {poolsData.length}
-              </div>
-              <div className="text-sm text-slate-400">Total Pools</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-green-400">
-                {
-                  poolsData.filter(
-                    (p) => p.status === "FUNDING" || p.status === "INVESTED"
-                  ).length
-                }
-              </div>
-              <div className="text-sm text-slate-400">Active</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Search and Filters */}
-        <div className="flex flex-col lg:flex-row gap-6">
-          {/* Search */}
-          <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
-            <input
-              type="text"
-              placeholder="Search by pool name or issuer..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-12 pr-6 py-4 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-400 focus:border-purple-500/50 focus:outline-none text-lg"
-            />
-          </div>
-
-          {/* Filters */}
-          <div className="flex gap-4">
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="px-6 py-4 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:border-purple-500/50 focus:outline-none text-lg min-w-[150px]"
-            >
-              {categories.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
-              className="px-6 py-4 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:border-purple-500/50 focus:outline-none text-lg min-w-[150px]"
-            >
-              {statuses.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Pools Grid */}
-      <div className="grid lg:grid-cols-2 gap-8">
-        {filteredPools.map((pool) => {
-          const StatusIcon = getStatusIcon(pool.status);
-
-          return (
-            <div key={pool.id} className="group relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-purple-500/5 to-pink-500/5 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-              <div className="relative bg-slate-800/60 backdrop-blur-xl border border-slate-700/40 rounded-3xl p-8 hover:border-slate-600/60 hover:bg-slate-800/70 transition-all duration-500 group-hover:transform group-hover:scale-[1.01] shadow-xl shadow-black/10">
-                {/* Pool Header */}
-                <div className="mb-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <h3 className="text-2xl font-bold text-slate-100 mb-2 group-hover:text-slate-50 transition-colors">
-                        {pool.name}
-                      </h3>
-                      <p className="text-slate-400 text-lg font-medium">
-                        {pool.issuer}
-                      </p>
-                    </div>
-                    <div className="text-right bg-gradient-to-br from-slate-700/30 to-slate-600/30 rounded-2xl p-4 border border-slate-600/20">
-                      <div className="text-3xl font-bold text-transparent bg-gradient-to-r from-purple-300/90 to-pink-300/90 bg-clip-text">
-                        {pool.expectedAPY}%
-                      </div>
-                      <div className="text-sm text-slate-400 font-medium">
-                        APY
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-900/30 rounded-2xl p-4 border border-slate-600/20">
-                    <p className="text-slate-300 leading-relaxed">
-                      {pool.description}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Pool Stats */}
-                <div className="grid grid-cols-2 gap-6 mb-8">
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between bg-slate-900/30 rounded-xl p-3 border border-slate-600/20">
-                      <span className="text-slate-400 flex items-center space-x-2 font-medium">
-                        <DollarSign className="w-4 h-4 text-emerald-400/80" />
-                        <span>Min Investment</span>
-                      </span>
-                      <span className="text-slate-200 font-bold text-lg">
-                        {formatCurrency(pool.minimumInvestment)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between bg-slate-900/30 rounded-xl p-3 border border-slate-600/20">
-                      <span className="text-slate-400 flex items-center space-x-2 font-medium">
-                        <Users className="w-4 h-4 text-sky-400/80" />
-                        <span>Investors</span>
-                      </span>
-                      <span className="text-slate-200 font-bold text-lg">
-                        {pool.participants.toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between bg-slate-900/30 rounded-xl p-3 border border-slate-600/20">
-                      <span className="text-slate-400 flex items-center space-x-2 font-medium">
-                        <Calendar className="w-4 h-4 text-violet-400/80" />
-                        <span>Maturity</span>
-                      </span>
-                      <span className="text-slate-200 font-bold text-lg">
-                        {new Date(pool.maturityDate).toLocaleDateString(
-                          "en-US",
-                          {
-                            month: "short",
-                            year: "2-digit",
-                          }
-                        )}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between bg-slate-900/30 rounded-xl p-3 border border-slate-600/20">
-                      <span className="text-slate-400 flex items-center space-x-2 font-medium">
-                        <Building2 className="w-4 h-4 text-amber-400/80" />
-                        <span>Type</span>
-                      </span>
-                      <span className="text-slate-200 font-bold text-lg">
-                        {pool.category}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Pool Action */}
-                <div className="flex items-center justify-between pt-4 border-t border-slate-600/30">
-                  <div className="flex items-center space-x-3">
-                    <span
-                      className={`px-4 py-2 rounded-full text-sm font-semibold ${getStatusColor(pool.status)}`}
-                    >
-                      {pool.status}
-                    </span>
-                    <div className="flex items-center space-x-2 text-slate-400 bg-slate-900/30 rounded-lg px-3 py-2">
-                      <StatusIcon className="w-4 h-4" />
-                      <span className="text-sm font-medium">
-                        {pool.timeRemaining}
-                      </span>
-                    </div>
-                  </div>
-
-                  <Link
-                    href={`/pools/${pool.id}`}
-                    className="group/btn flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-purple-600/90 to-pink-600/90 hover:from-purple-500/90 hover:to-pink-500/90 text-white font-bold rounded-xl transition-all duration-300 transform hover:scale-105 shadow-lg shadow-purple-500/15"
-                  >
-                    <span>
-                      {pool.status === "FUNDING"
-                        ? "Invest Now"
-                        : pool.status === "INVESTED"
-                          ? "View Pool"
-                          : pool.status === "MATURED"
-                            ? "Claim Returns"
-                            : "View Details"}
-                    </span>
-                    <ArrowUpRight className="w-4 h-4 group-hover/btn:translate-x-0.5 group-hover/btn:-translate-y-0.5 transition-transform" />
-                  </Link>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Empty State */}
-      {filteredPools.length === 0 && (
-        <div className="text-center py-20">
-          <div className="w-20 h-20 bg-slate-800/50 rounded-full flex items-center justify-center mx-auto mb-6">
-            <Target className="w-10 h-10 text-slate-400" />
-          </div>
-          <h3 className="text-2xl font-semibold text-white mb-3">
-            No pools found
-          </h3>
-          <p className="text-slate-400 text-lg">
-            Try adjusting your search or filter criteria
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-white">Investment Pools</h1>
+          <p className="text-slate-400 mt-1">
+            Discover and invest in tokenized money market securities
           </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            variant="outline"
+            className="border-white/20 hover:border-white/40"
+          >
+            <RefreshCw
+              className={`w-4 h-4 mr-2 ${refreshing ? "animate-spin" : ""}`}
+            />
+            Refresh
+          </Button>
+          <Button
+            asChild
+            className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+          >
+            <Link href="/admin/pools/create">
+              <Plus className="w-4 h-4 mr-2" />
+              Create Pool
+            </Link>
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <Card className="bg-slate-900/50 border-white/10">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-slate-300">
+              Total Value Locked
+            </CardTitle>
+            <DollarSign className="h-4 w-4 text-green-400" />
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="flex items-center space-x-2">
+                <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                <span className="text-slate-400">Loading...</span>
+              </div>
+            ) : (
+              <>
+                <div className="text-2xl font-bold text-white">
+                  {formatCurrency(totalTVL.toString())}
+                </div>
+                <p className="text-xs text-slate-400 mt-1">
+                  Across {totalPools} pools
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-slate-900/50 border-white/10">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-slate-300">
+              Active Pools
+            </CardTitle>
+            <Target className="h-4 w-4 text-blue-400" />
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="flex items-center space-x-2">
+                <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                <span className="text-slate-400">Loading...</span>
+              </div>
+            ) : (
+              <>
+                <div className="text-2xl font-bold text-white">
+                  {activePoolsCount}
+                </div>
+                <p className="text-xs text-slate-400 mt-1">
+                  {totalPools - activePoolsCount} completed
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-slate-900/50 border-white/10">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-slate-300">
+              Average APY
+            </CardTitle>
+            <TrendingUp className="h-4 w-4 text-purple-400" />
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="flex items-center space-x-2">
+                <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                <span className="text-slate-400">Loading...</span>
+              </div>
+            ) : (
+              <>
+                <div className="text-2xl font-bold text-white">
+                  {formatPercentage(averageAPY)}
+                </div>
+                <p className="text-xs text-slate-400 mt-1">Expected returns</p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-slate-900/50 border-white/10">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-slate-300">
+              Your Positions
+            </CardTitle>
+            <Users className="h-4 w-4 text-yellow-400" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-white">
+              {Object.keys(mockUserPositions).length}
+            </div>
+            <p className="text-xs text-slate-400 mt-1">Active investments</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <PoolFiltersComponent
+        filters={filters}
+        onFiltersChange={setFilters}
+        activePoolsCount={filteredPools.length}
+        totalPoolsCount={totalPools}
+      />
+
+      {isLoading ? (
+        <Card className="bg-slate-900/50 border-white/10">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <Loader2 className="w-12 h-12 text-purple-500 animate-spin mb-4" />
+            <h3 className="text-lg font-semibold text-white mb-2">
+              Loading Pools...
+            </h3>
+            <p className="text-slate-400 text-center">
+              Fetching pool data from the blockchain
+            </p>
+          </CardContent>
+        </Card>
+      ) : filteredPools.length === 0 ? (
+        <Card className="bg-slate-900/50 border-white/10">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <BarChart3 className="w-12 h-12 text-slate-400 mb-4" />
+            <h3 className="text-lg font-semibold text-white mb-2">
+              No pools found
+            </h3>
+            <p className="text-slate-400 text-center">
+              {pools?.length === 0
+                ? "No pools have been created yet."
+                : "Try adjusting your filters or search criteria to find investment opportunities."}
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          {filteredPools.map((pool) => (
+            <PoolCard
+              key={pool._id}
+              pool={pool}
+              userPosition={
+                mockUserPositions[pool._id as keyof typeof mockUserPositions]
+              }
+              showInvestButton={true}
+            />
+          ))}
         </div>
       )}
     </div>
