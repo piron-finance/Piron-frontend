@@ -140,7 +140,9 @@ export default defineSchema({
       v.literal("USER_ROLE_CHANGED"),
       v.literal("POOL_STATUS_UPDATED"),
       v.literal("EMERGENCY_ACTION"),
-      v.literal("INVESTMENT_CONFIRMED")
+      v.literal("INVESTMENT_CONFIRMED"),
+      v.literal("POOL_ACTIVATED"),
+      v.literal("POOL_PAUSED")
     ),
     targetId: v.optional(v.string()),
     targetType: v.union(

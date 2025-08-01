@@ -25,18 +25,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <ClerkProvider
-          publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
-          signInUrl="/signin"
-          signUpUrl="/signup"
+    <ClerkProvider>
+      <html lang="en">
+        <body
+          className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         >
           <Providers>{children}</Providers>
-        </ClerkProvider>
-      </body>
-    </html>
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }

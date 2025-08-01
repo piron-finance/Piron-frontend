@@ -1,32 +1,24 @@
 "use client";
 
 import { useState } from "react";
+import { useAccount } from "wagmi";
+import { useCreatePool, CreatePoolFormData } from "@/hooks/useCreatePool";
+import { ConnectButton } from "@/components/connect-button";
 import {
   Save,
   Plus,
   Trash2,
-  Info,
   AlertCircle,
-  Calendar,
-  DollarSign,
   Target,
-  Percent,
-  Building2,
   FileText,
-  Clock,
-  Shield,
   Users,
   CheckCircle,
+  ExternalLink,
 } from "lucide-react";
 
 interface CouponPayment {
   date: string;
   rate: number;
-}
-
-interface EscrowSigner {
-  address: string;
-  name: string;
 }
 
 const INSTRUMENT_TYPES = [
@@ -38,28 +30,26 @@ const INSTRUMENT_TYPES = [
 ];
 
 const ASSET_TOKENS = [
+  // this should be based on current chain but not important for npw
   {
-    value: "0x1234567890123456789012345678901234567890",
-    label: "USDC",
-    symbol: "USDC",
-  },
-  {
-    value: "0x2345678901234567890123456789012345678901",
-    label: "USDT",
+    value: "0x9E12AD42c4E4d2acFBADE01a96446e48e6764B98",
+    label: "USDT (Morph Holesky)",
     symbol: "USDT",
   },
   {
-    value: "0x3456789012345678901234567890123456789012",
-    label: "DAI",
-    symbol: "DAI",
+    value: "0xEC33dC84aEC542694B490168250b62E53ce6DB17",
+    label: "CNGN (Base Sepolia)",
+    symbol: "CNGN",
   },
 ];
 
 export default function CreatePoolPage() {
-  const [formData, setFormData] = useState({
-    // Basic Pool Info
+  const { isConnected, chain } = useAccount();
+  const { createPool, isCreating, isSuccess, error, transactionHash } =
+    useCreatePool();
+
+  const [formData, setFormData] = useState<CreatePoolFormData>({
     name: "",
-    symbol: "",
     asset: "",
 
     // Pool Configuration
@@ -69,25 +59,16 @@ export default function CreatePoolPage() {
     discountRate: "",
     instrumentType: "DISCOUNTED",
 
-    // Interest Bearing Configuration
     couponPayments: [] as CouponPayment[],
 
-    // Escrow Configuration
-    escrowSigners: [] as EscrowSigner[],
-    requiredConfirmations: "2",
-
-    // Additional Metadata
     issuer: "",
+    spvAddress: "",
     description: "",
     riskLevel: "LOW",
-    category: "",
-    creditRating: "",
     minimumInvestment: "",
-    series: "",
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleInputChange = (field: string, value: string | number) => {
     setFormData((prev) => ({
@@ -95,7 +76,6 @@ export default function CreatePoolPage() {
       [field]: value,
     }));
 
-    // Clear error when user starts typing
     if (errors[field]) {
       setErrors((prev) => ({
         ...prev,
@@ -131,39 +111,10 @@ export default function CreatePoolPage() {
     }));
   };
 
-  const addEscrowSigner = () => {
-    setFormData((prev) => ({
-      ...prev,
-      escrowSigners: [...prev.escrowSigners, { address: "", name: "" }],
-    }));
-  };
-
-  const removeEscrowSigner = (index: number) => {
-    setFormData((prev) => ({
-      ...prev,
-      escrowSigners: prev.escrowSigners.filter((_, i) => i !== index),
-    }));
-  };
-
-  const updateEscrowSigner = (
-    index: number,
-    field: keyof EscrowSigner,
-    value: string
-  ) => {
-    setFormData((prev) => ({
-      ...prev,
-      escrowSigners: prev.escrowSigners.map((signer, i) =>
-        i === index ? { ...signer, [field]: value } : signer
-      ),
-    }));
-  };
-
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
-    // Required fields validation
     if (!formData.name) newErrors.name = "Pool name is required";
-    if (!formData.symbol) newErrors.symbol = "Pool symbol is required";
     if (!formData.asset) newErrors.asset = "Asset token is required";
     if (!formData.targetRaise)
       newErrors.targetRaise = "Target raise amount is required";
@@ -172,6 +123,10 @@ export default function CreatePoolPage() {
     if (!formData.maturityDate)
       newErrors.maturityDate = "Maturity date is required";
     if (!formData.issuer) newErrors.issuer = "Issuer name is required";
+    if (!formData.spvAddress) newErrors.spvAddress = "SPV address is required";
+    else if (!/^0x[a-fA-F0-9]{40}$/.test(formData.spvAddress)) {
+      newErrors.spvAddress = "Invalid Ethereum address format";
+    }
     if (!formData.description)
       newErrors.description = "Description is required";
 
@@ -210,28 +165,6 @@ export default function CreatePoolPage() {
       newErrors.maturityDate = "Maturity date must be after funding end time";
     }
 
-    // Escrow validation
-    if (formData.escrowSigners.length < 2) {
-      newErrors.escrowSigners = "At least 2 escrow signers are required";
-    }
-
-    formData.escrowSigners.forEach((signer, index) => {
-      if (!signer.address) {
-        newErrors[`signer_address_${index}`] = "Signer address is required";
-      }
-      if (!signer.name) {
-        newErrors[`signer_name_${index}`] = "Signer name is required";
-      }
-    });
-
-    if (
-      Number(formData.requiredConfirmations) < 2 ||
-      Number(formData.requiredConfirmations) > formData.escrowSigners.length
-    ) {
-      newErrors.requiredConfirmations =
-        "Required confirmations must be between 2 and the number of signers";
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -243,24 +176,75 @@ export default function CreatePoolPage() {
       return;
     }
 
-    setIsSubmitting(true);
-
     try {
-      // Here you would call the smart contract createPool function
-      console.log("Creating pool with data:", formData);
-
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // Show success message and redirect
-      alert("Pool created successfully!");
-    } catch (error) {
-      console.error("Error creating pool:", error);
-      alert("Error creating pool. Please try again.");
-    } finally {
-      setIsSubmitting(false);
+      await createPool(formData);
+    } catch (err: any) {
+      console.error("Error creating pool:", err);
     }
   };
+
+  // Show success state
+  if (isSuccess && transactionHash) {
+    return (
+      <div className="p-8">
+        <div className="max-w-2xl mx-auto text-center">
+          <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+            <CheckCircle className="w-10 h-10 text-green-400" />
+          </div>
+          <h1 className="text-3xl font-bold text-white mb-4">
+            Pool Created Successfully!
+          </h1>
+          <p className="text-slate-400 mb-6">
+            Your investment pool has been deployed to the blockchain.
+          </p>
+          <div className="bg-slate-800/60 backdrop-blur-xl border border-slate-700/40 rounded-2xl p-6 mb-6">
+            <p className="text-sm text-slate-400 mb-2">Transaction Hash:</p>
+            <div className="flex items-center justify-center gap-2">
+              <code className="text-green-400 bg-slate-900/50 px-3 py-1 rounded text-sm">
+                {transactionHash}
+              </code>
+              {chain?.blockExplorers?.default && (
+                <a
+                  href={`${chain.blockExplorers.default.url}/tx/${transactionHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-400 hover:text-blue-300 transition-colors"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-medium rounded-xl transition-all duration-300"
+          >
+            Create Another Pool
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Show wallet connection prompt if not connected
+  if (!isConnected) {
+    return (
+      <div className="p-8">
+        <div className="max-w-2xl mx-auto text-center">
+          <div className="w-20 h-20 bg-purple-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Users className="w-10 h-10 text-purple-400" />
+          </div>
+          <h1 className="text-3xl font-bold text-white mb-4">
+            Connect Your Wallet
+          </h1>
+          <p className="text-slate-400 mb-6">
+            Please connect your wallet to create investment pools.
+          </p>
+          <ConnectButton />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8">
@@ -273,7 +257,23 @@ export default function CreatePoolPage() {
           <p className="text-lg text-slate-400">
             Deploy a new investment pool with tokenized securities
           </p>
+          {chain && (
+            <p className="text-sm text-slate-500 mt-2">
+              Deploying on {chain.name}
+            </p>
+          )}
         </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-red-400" />
+              <p className="text-red-400 font-medium">Error Creating Pool</p>
+            </div>
+            <p className="text-red-300 text-sm mt-1">{error}</p>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-8">
           {/* Basic Information */}
@@ -297,22 +297,6 @@ export default function CreatePoolPage() {
                 />
                 {errors.name && (
                   <p className="text-red-400 text-sm mt-1">{errors.name}</p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">
-                  Pool Symbol *
-                </label>
-                <input
-                  type="text"
-                  value={formData.symbol}
-                  onChange={(e) => handleInputChange("symbol", e.target.value)}
-                  placeholder="e.g., NTB-Q3-25"
-                  className="w-full px-4 py-3 bg-slate-900/30 border border-slate-600/20 rounded-xl text-slate-200 placeholder-slate-500 focus:border-orange-500/50 focus:outline-none"
-                />
-                {errors.symbol && (
-                  <p className="text-red-400 text-sm mt-1">{errors.symbol}</p>
                 )}
               </div>
 
@@ -351,6 +335,29 @@ export default function CreatePoolPage() {
                 {errors.issuer && (
                   <p className="text-red-400 text-sm mt-1">{errors.issuer}</p>
                 )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-400 mb-2">
+                  SPV Address *
+                </label>
+                <input
+                  type="text"
+                  value={formData.spvAddress || ""}
+                  onChange={(e) =>
+                    handleInputChange("spvAddress", e.target.value)
+                  }
+                  placeholder="0x..."
+                  className="w-full px-4 py-3 bg-slate-900/30 border border-slate-600/20 rounded-xl text-slate-200 placeholder-slate-500 focus:border-orange-500/50 focus:outline-none"
+                />
+                {errors.spvAddress && (
+                  <p className="text-red-400 text-sm mt-1">
+                    {errors.spvAddress}
+                  </p>
+                )}
+                <p className="text-sm text-slate-500 mt-1">
+                  The Special Purpose Vehicle address that will manage this pool
+                </p>
               </div>
             </div>
 
@@ -486,11 +493,9 @@ export default function CreatePoolPage() {
                   }
                   className="w-full px-4 py-3 bg-slate-900/30 border border-slate-600/20 rounded-xl text-slate-200 focus:border-orange-500/50 focus:outline-none"
                 >
-                  <option value="VERY_LOW">Very Low</option>
                   <option value="LOW">Low</option>
                   <option value="MEDIUM">Medium</option>
                   <option value="HIGH">High</option>
-                  <option value="VERY_HIGH">Very High</option>
                 </select>
               </div>
             </div>
@@ -582,108 +587,14 @@ export default function CreatePoolPage() {
             )}
           </div>
 
-          {/* Escrow Configuration */}
-          <div className="bg-slate-800/60 backdrop-blur-xl border border-slate-700/40 rounded-3xl p-8">
-            <h2 className="text-2xl font-bold text-white mb-6 flex items-center space-x-2">
-              <Shield className="w-6 h-6 text-orange-400" />
-              <span>Escrow Configuration</span>
-            </h2>
-
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-4">
-                <label className="text-sm font-medium text-slate-400">
-                  Escrow Signers * (Min 2 required)
-                </label>
-                <button
-                  type="button"
-                  onClick={addEscrowSigner}
-                  className="flex items-center space-x-2 px-3 py-1 bg-orange-500/20 text-orange-300 rounded-lg hover:bg-orange-500/30 transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Add Signer</span>
-                </button>
-              </div>
-
-              {formData.escrowSigners.map((signer, index) => (
-                <div
-                  key={index}
-                  className="grid md:grid-cols-2 gap-4 mb-4 p-4 bg-slate-900/30 rounded-xl border border-slate-600/20"
-                >
-                  <input
-                    type="text"
-                    value={signer.name}
-                    onChange={(e) =>
-                      updateEscrowSigner(index, "name", e.target.value)
-                    }
-                    placeholder="Signer name"
-                    className="px-4 py-2 bg-slate-800/50 border border-slate-600/20 rounded-lg text-slate-200 placeholder-slate-500 focus:border-orange-500/50 focus:outline-none"
-                  />
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="text"
-                      value={signer.address}
-                      onChange={(e) =>
-                        updateEscrowSigner(index, "address", e.target.value)
-                      }
-                      placeholder="0x..."
-                      className="flex-1 px-4 py-2 bg-slate-800/50 border border-slate-600/20 rounded-lg text-slate-200 placeholder-slate-500 focus:border-orange-500/50 focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeEscrowSigner(index)}
-                      className="p-2 text-red-400 hover:text-red-300 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-
-              {errors.escrowSigners && (
-                <p className="text-red-400 text-sm mt-1">
-                  {errors.escrowSigners}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-400 mb-2">
-                Required Confirmations *
-              </label>
-              <input
-                type="number"
-                min="2"
-                value={formData.requiredConfirmations}
-                onChange={(e) =>
-                  handleInputChange("requiredConfirmations", e.target.value)
-                }
-                className="w-full px-4 py-3 bg-slate-900/30 border border-slate-600/20 rounded-xl text-slate-200 focus:border-orange-500/50 focus:outline-none"
-              />
-              {errors.requiredConfirmations && (
-                <p className="text-red-400 text-sm mt-1">
-                  {errors.requiredConfirmations}
-                </p>
-              )}
-              <p className="text-sm text-slate-500 mt-1">
-                Number of signatures required for escrow transactions
-              </p>
-            </div>
-          </div>
-
           {/* Submit Button */}
           <div className="flex items-center justify-end space-x-4">
             <button
-              type="button"
-              className="px-6 py-3 border border-slate-600/30 text-slate-300 rounded-xl hover:bg-slate-800/50 transition-colors"
-            >
-              Save Draft
-            </button>
-            <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isCreating}
               className="flex items-center space-x-2 px-8 py-3 bg-gradient-to-r from-red-600/90 to-orange-600/90 hover:from-red-500/90 hover:to-orange-500/90 disabled:from-slate-600 disabled:to-slate-600 text-white font-bold rounded-xl transition-all duration-300 transform hover:scale-105 shadow-lg shadow-red-500/15 disabled:transform-none disabled:shadow-none"
             >
-              {isSubmitting ? (
+              {isCreating ? (
                 <>
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   <span>Creating Pool...</span>

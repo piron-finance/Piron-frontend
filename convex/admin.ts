@@ -1,11 +1,11 @@
 import { mutation, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
-import { Id } from "./_generated/dataModel";
+import type { QueryCtx, MutationCtx } from "./_generated/server";
 
-const requireAdmin = async (ctx: any, clerkId: string) => {
+const requireAdmin = async (ctx: QueryCtx | MutationCtx, clerkId: string) => {
   const user = await ctx.db
     .query("users")
-    .filter((q: any) => q.eq(q.field("clerkId"), clerkId))
+    .filter((q) => q.eq(q.field("clerkId"), clerkId))
     .first();
 
   if (!user || (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN")) {
@@ -450,6 +450,44 @@ export const emergencyAction = mutation({
       details: {
         reason: args.reason,
         metadata: { emergencyAction: args.action },
+      },
+      createdAt: Date.now(),
+    });
+
+    return args.poolId;
+  },
+});
+
+export const togglePoolActive = mutation({
+  args: {
+    adminClerkId: v.string(),
+    poolId: v.id("pools"),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx, args.adminClerkId);
+
+    const pool = await ctx.db.get(args.poolId);
+    if (!pool) {
+      throw new ConvexError("Pool not found");
+    }
+
+    const newActiveStatus = !pool.isActive;
+
+    await ctx.db.patch(args.poolId, {
+      isActive: newActiveStatus,
+      updatedAt: Date.now(),
+    });
+
+    await ctx.db.insert("adminActions", {
+      adminId: admin._id,
+      action: newActiveStatus ? "POOL_ACTIVATED" : "POOL_PAUSED",
+      targetId: args.poolId,
+      targetType: "POOL",
+      details: {
+        reason:
+          args.reason || `Pool ${newActiveStatus ? "activated" : "paused"}`,
+        metadata: { poolName: pool.name, newStatus: newActiveStatus },
       },
       createdAt: Date.now(),
     });

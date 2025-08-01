@@ -1,11 +1,11 @@
-"use client";
 import { ConvexClientProvider } from "./ConvexClientProvider";
-import { Web3ModalProvider } from "@/contexts/web3modal";
+import Web3ModalProvider from "./web3modal";
+import { PropsWithChildren } from "react";
 
-export function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({ children }: PropsWithChildren) {
   return (
-    <ConvexClientProvider>
-      <Web3ModalProvider>{children}</Web3ModalProvider>
-    </ConvexClientProvider>
+    <Web3ModalProvider>
+      <ConvexClientProvider>{children}</ConvexClientProvider>
+    </Web3ModalProvider>
   );
 }

@@ -1,10 +1,16 @@
 "use client";
-
 import { useState } from "react";
 import Link from "next/link";
+import { useAccount } from "wagmi";
+import {
+  useRegistryContract,
+  useMultiplePoolContracts,
+  useFactoryContract,
+} from "@/hooks/useContracts";
+import { formatCurrency, formatPercentage } from "@/lib/utils";
+import { InstrumentType, PoolStatus } from "@/types";
 import {
   TrendingUp,
-  TrendingDown,
   DollarSign,
   Users,
   Target,
@@ -13,206 +19,107 @@ import {
   Clock,
   Building2,
   ArrowUpRight,
-  ArrowDownRight,
   Plus,
-  Eye,
   RefreshCw,
-  Activity,
-  Shield,
   Database,
-  Server,
-  Zap,
+  Loader2,
 } from "lucide-react";
 
-// Mock data for admin dashboard
-const dashboardStats = {
-  totalValueLocked: 29450000,
-  totalPools: 5,
-  totalInvestors: 3338,
-  averageAPY: 19.8,
-  activeFunding: 1,
-  pendingInvestments: 1,
-  maturedPools: 1,
-  emergencyPools: 1,
-  monthlyGrowth: {
-    tvl: 12.5,
-    investors: 23.7,
-    pools: 25.0,
-  },
-};
-
-const recentActivity = [
-  {
-    id: "1",
-    type: "POOL_CREATED",
-    title: "New pool created",
-    description: "Nigerian Treasury Bills Q3 2025",
-    timestamp: "2025-03-01T10:00:00",
-    status: "success",
-  },
-  {
-    id: "2",
-    type: "INVESTMENT_PROCESSED",
-    title: "Investment processed",
-    description: "Zenith Bank Commercial Paper - $4.0M",
-    timestamp: "2025-02-28T14:30:00",
-    status: "success",
-  },
-  {
-    id: "3",
-    type: "POOL_MATURED",
-    title: "Pool matured",
-    description: "Dangote Commercial Paper 2025-A",
-    timestamp: "2025-01-30T09:15:00",
-    status: "info",
-  },
-  {
-    id: "4",
-    type: "EMERGENCY_EXIT",
-    title: "Emergency exit triggered",
-    description: "Access Bank Fixed Deposit Premium",
-    timestamp: "2024-10-31T16:45:00",
-    status: "warning",
-  },
-  {
-    id: "5",
-    type: "USER_REGISTERED",
-    title: "New user registered",
-    description: "234 new users this week",
-    timestamp: "2025-02-25T11:20:00",
-    status: "info",
-  },
-];
-
-const systemStatus = [
-  {
-    name: "Blockchain Network",
-    status: "operational",
-    latency: "12ms",
-    uptime: "99.9%",
-  },
-  {
-    name: "Smart Contracts",
-    status: "operational",
-    latency: "45ms",
-    uptime: "100%",
-  },
-  {
-    name: "Database",
-    status: "operational",
-    latency: "8ms",
-    uptime: "99.8%",
-  },
-  {
-    name: "API Gateway",
-    status: "operational",
-    latency: "23ms",
-    uptime: "99.9%",
-  },
-];
-
-const topPools = [
-  {
-    id: "2",
-    name: "MTN Group Corporate Bond",
-    tvl: 10000000,
-    investors: 1234,
-    apy: 16.8,
-    status: "INVESTED",
-  },
-  {
-    id: "3",
-    name: "Dangote Commercial Paper",
-    tvl: 7500000,
-    investors: 567,
-    apy: 21.5,
-    status: "MATURED",
-  },
-  {
-    id: "5",
-    name: "Zenith Bank Commercial Paper",
-    tvl: 4000000,
-    investors: 456,
-    apy: 19.8,
-    status: "PENDING_INVESTMENT",
-  },
-];
-
-const formatCurrency = (amount: number) => {
-  if (amount >= 1000000000) return `$${(amount / 1000000000).toFixed(1)}B`;
-  if (amount >= 1000000) return `$${(amount / 1000000).toFixed(1)}M`;
-  if (amount >= 1000) return `$${(amount / 1000).toFixed(1)}K`;
-  return `$${amount.toLocaleString()}`;
-};
-
-const getActivityIcon = (type: string) => {
-  switch (type) {
-    case "POOL_CREATED":
-      return Plus;
-    case "INVESTMENT_PROCESSED":
-      return DollarSign;
-    case "POOL_MATURED":
-      return Target;
-    case "EMERGENCY_EXIT":
-      return AlertCircle;
-    case "USER_REGISTERED":
-      return Users;
-    default:
-      return Activity;
-  }
-};
-
-const getActivityColor = (status: string) => {
-  switch (status) {
-    case "success":
-      return "text-green-400";
-    case "warning":
-      return "text-yellow-400";
-    case "error":
-      return "text-red-400";
-    default:
-      return "text-blue-400";
-  }
-};
-
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case "FUNDING":
-      return "bg-blue-500/20 text-blue-300";
-    case "PENDING_INVESTMENT":
-      return "bg-yellow-500/20 text-yellow-300";
-    case "INVESTED":
-      return "bg-green-500/20 text-green-300";
-    case "MATURED":
-      return "bg-purple-500/20 text-purple-300";
-    case "EMERGENCY":
-      return "bg-red-500/20 text-red-300";
-    default:
-      return "bg-slate-500/20 text-slate-300";
-  }
-};
-
 export default function AdminDashboard() {
+  const { isConnected, chain } = useAccount();
   const [refreshing, setRefreshing] = useState(false);
+
+  const {
+    activePools,
+    allPools,
+    isLoadingActivePools,
+    refetch: refetchRegistry,
+  } = useRegistryContract();
+  const { isLoadingPoolCount, refetch: refetchFactory } = useFactoryContract();
+  const { pools, isLoading: isLoadingPools } = useMultiplePoolContracts(
+    (allPools as `0x${string}`[]) || []
+  );
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    // Simulate refresh
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    try {
+      await Promise.all([refetchRegistry(), refetchFactory()]);
+    } catch (error) {
+      console.error("Error refreshing data:", error);
+    }
     setRefreshing(false);
   };
 
+  const isLoading =
+    isLoadingActivePools || isLoadingPools || isLoadingPoolCount;
+
+  const totalTVL =
+    pools?.reduce((sum, pool) => sum + parseFloat(pool.totalRaised), 0) || 0;
+
+  const totalPools = allPools.length || 0;
+
+  const activePoolsCount = activePools?.length || 0;
+
+  const maturedPoolsCount =
+    pools?.filter((pool) => pool.status === PoolStatus.MATURED).length || 0;
+  const pendingPoolsCount =
+    pools?.filter((pool) => pool.status === PoolStatus.PENDING_INVESTMENT)
+      .length || 0;
+
+  const averageAPY = pools?.length
+    ? pools.reduce((sum, pool) => {
+        const apy =
+          pool.instrumentType === InstrumentType.DISCOUNTED && pool.discountRate
+            ? pool.discountRate / 100
+            : pool.couponRates
+              ? pool.couponRates.reduce((sum, rate) => sum + rate, 0) / 100
+              : 0;
+        return sum + apy;
+      }, 0) / pools.length
+    : 0;
+
+  // Get top performing pools
+  const topPools =
+    pools
+      ?.sort((a, b) => parseFloat(b.totalRaised) - parseFloat(a.totalRaised))
+      .slice(0, 3) || [];
+
+  if (!isConnected) {
+    return (
+      <div className="p-8">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <div className="w-20 h-20 bg-purple-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Users className="w-10 h-10 text-purple-400" />
+            </div>
+            <h3 className="text-xl font-semibold text-white mb-2">
+              Connect Your Wallet
+            </h3>
+            <p className="text-slate-400 text-center">
+              Please connect your wallet to view admin dashboard data.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-8">
-      {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-4xl font-bold text-white mb-3">
             Admin Dashboard
           </h1>
           <p className="text-lg text-slate-400">
-            Monitor platform performance and manage operations
+            Protocol operations and performance
           </p>
+
+          {chain && (
+            <p className="text-sm text-slate-500 mt-1">
+              Connected to {chain.name}
+            </p>
+          )}
         </div>
         <div className="flex items-center space-x-4">
           <button
@@ -242,17 +149,20 @@ export default function AdminDashboard() {
             <div className="w-12 h-12 bg-emerald-500/20 rounded-xl flex items-center justify-center">
               <DollarSign className="w-6 h-6 text-emerald-400/80" />
             </div>
-            <div className="flex items-center space-x-1 text-emerald-400">
-              <TrendingUp className="w-4 h-4" />
-              <span className="text-sm font-medium">
-                +{dashboardStats.monthlyGrowth.tvl}%
-              </span>
+          </div>
+          {isLoading ? (
+            <div className="flex items-center space-x-2">
+              <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+              <span className="text-slate-400">Loading...</span>
             </div>
-          </div>
-          <div className="text-3xl font-bold text-white mb-1">
-            {formatCurrency(dashboardStats.totalValueLocked)}
-          </div>
-          <div className="text-sm text-slate-400">Total Value Locked</div>
+          ) : (
+            <>
+              <div className="text-3xl font-bold text-white mb-1">
+                {formatCurrency(totalTVL.toString())}
+              </div>
+              <div className="text-sm text-slate-400">Total Value Locked</div>
+            </>
+          )}
         </div>
 
         <div className="bg-slate-800/60 backdrop-blur-xl border border-slate-700/40 rounded-3xl p-6">
@@ -260,17 +170,20 @@ export default function AdminDashboard() {
             <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center">
               <Target className="w-6 h-6 text-blue-400/80" />
             </div>
-            <div className="flex items-center space-x-1 text-blue-400">
-              <TrendingUp className="w-4 h-4" />
-              <span className="text-sm font-medium">
-                +{dashboardStats.monthlyGrowth.pools}%
-              </span>
+          </div>
+          {isLoading ? (
+            <div className="flex items-center space-x-2">
+              <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+              <span className="text-slate-400">Loading...</span>
             </div>
-          </div>
-          <div className="text-3xl font-bold text-white mb-1">
-            {dashboardStats.totalPools}
-          </div>
-          <div className="text-sm text-slate-400">Total Pools</div>
+          ) : (
+            <>
+              <div className="text-3xl font-bold text-white mb-1">
+                {totalPools}
+              </div>
+              <div className="text-sm text-slate-400">Total Pools</div>
+            </>
+          )}
         </div>
 
         <div className="bg-slate-800/60 backdrop-blur-xl border border-slate-700/40 rounded-3xl p-6">
@@ -278,17 +191,20 @@ export default function AdminDashboard() {
             <div className="w-12 h-12 bg-purple-500/20 rounded-xl flex items-center justify-center">
               <Users className="w-6 h-6 text-purple-400/80" />
             </div>
-            <div className="flex items-center space-x-1 text-purple-400">
-              <TrendingUp className="w-4 h-4" />
-              <span className="text-sm font-medium">
-                +{dashboardStats.monthlyGrowth.investors}%
-              </span>
+          </div>
+          {isLoading ? (
+            <div className="flex items-center space-x-2">
+              <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+              <span className="text-slate-400">Loading...</span>
             </div>
-          </div>
-          <div className="text-3xl font-bold text-white mb-1">
-            {dashboardStats.totalInvestors.toLocaleString()}
-          </div>
-          <div className="text-sm text-slate-400">Total Investors</div>
+          ) : (
+            <>
+              <div className="text-3xl font-bold text-white mb-1">
+                {activePoolsCount}
+              </div>
+              <div className="text-sm text-slate-400">Active Pools</div>
+            </>
+          )}
         </div>
 
         <div className="bg-slate-800/60 backdrop-blur-xl border border-slate-700/40 rounded-3xl p-6">
@@ -296,12 +212,20 @@ export default function AdminDashboard() {
             <div className="w-12 h-12 bg-orange-500/20 rounded-xl flex items-center justify-center">
               <TrendingUp className="w-6 h-6 text-orange-400/80" />
             </div>
-            <div className="text-slate-400 text-sm">Average</div>
           </div>
-          <div className="text-3xl font-bold text-white mb-1">
-            {dashboardStats.averageAPY}%
-          </div>
-          <div className="text-sm text-slate-400">Average APY</div>
+          {isLoading ? (
+            <div className="flex items-center space-x-2">
+              <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+              <span className="text-slate-400">Loading...</span>
+            </div>
+          ) : (
+            <>
+              <div className="text-3xl font-bold text-white mb-1">
+                {formatPercentage(averageAPY)}
+              </div>
+              <div className="text-sm text-slate-400">Average APY</div>
+            </>
+          )}
         </div>
       </div>
 
@@ -329,7 +253,11 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                   <div className="text-2xl font-bold text-blue-400">
-                    {dashboardStats.activeFunding}
+                    {isLoading ? (
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                    ) : (
+                      activePoolsCount
+                    )}
                   </div>
                 </div>
 
@@ -348,7 +276,11 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                   <div className="text-2xl font-bold text-yellow-400">
-                    {dashboardStats.pendingInvestments}
+                    {isLoading ? (
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                    ) : (
+                      pendingPoolsCount
+                    )}
                   </div>
                 </div>
               </div>
@@ -369,26 +301,34 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                   <div className="text-2xl font-bold text-green-400">
-                    {dashboardStats.maturedPools}
+                    {isLoading ? (
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                    ) : (
+                      maturedPoolsCount
+                    )}
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between p-4 bg-slate-900/30 rounded-xl border border-slate-600/20">
                   <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-red-500/20 rounded-xl flex items-center justify-center">
-                      <AlertCircle className="w-5 h-5 text-red-400" />
+                    <div className="w-10 h-10 bg-slate-500/20 rounded-xl flex items-center justify-center">
+                      <Database className="w-5 h-5 text-slate-400" />
                     </div>
                     <div>
                       <div className="font-semibold text-slate-200">
-                        Emergency Status
+                        Total Pools
                       </div>
                       <div className="text-sm text-slate-400">
-                        Pools requiring attention
+                        All pools created
                       </div>
                     </div>
                   </div>
-                  <div className="text-2xl font-bold text-red-400">
-                    {dashboardStats.emergencyPools}
+                  <div className="text-2xl font-bold text-slate-400">
+                    {isLoading ? (
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                    ) : (
+                      totalPools
+                    )}
                   </div>
                 </div>
               </div>
@@ -406,114 +346,116 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* System Status */}
+        {/* Network Status */}
         <div>
           <div className="bg-slate-800/60 backdrop-blur-xl border border-slate-700/40 rounded-3xl p-8">
             <h2 className="text-2xl font-bold text-white mb-6">
-              System Status
+              Network Status
             </h2>
             <div className="space-y-4">
-              {systemStatus.map((system, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between p-3 bg-slate-900/30 rounded-xl border border-slate-600/20"
-                >
-                  <div className="flex items-center space-x-3">
-                    <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                    <div>
-                      <div className="font-medium text-slate-200">
-                        {system.name}
-                      </div>
-                      <div className="text-sm text-slate-400">
-                        {system.latency} • {system.uptime}
-                      </div>
+              <div className="flex items-center justify-between p-3 bg-slate-900/30 rounded-xl border border-slate-600/20">
+                <div className="flex items-center space-x-3">
+                  <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                  <div>
+                    <div className="font-medium text-slate-200">
+                      {chain?.name || "Network"}
+                    </div>
+                    <div className="text-sm text-slate-400">
+                      Chain ID: {chain?.id || "Unknown"}
                     </div>
                   </div>
-                  <div className="text-sm text-green-400 font-medium">
-                    {system.status}
+                </div>
+                <div className="text-sm text-green-400 font-medium">
+                  Connected
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-slate-900/30 rounded-xl border border-slate-600/20">
+                <div className="flex items-center space-x-3">
+                  <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                  <div>
+                    <div className="font-medium text-slate-200">
+                      Factory Contract
+                    </div>
+                    <div className="text-sm text-slate-400">Pool Creation</div>
                   </div>
                 </div>
-              ))}
+                <div className="text-sm text-green-400 font-medium">Active</div>
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-slate-900/30 rounded-xl border border-slate-600/20">
+                <div className="flex items-center space-x-3">
+                  <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                  <div>
+                    <div className="font-medium text-slate-200">
+                      Registry Contract
+                    </div>
+                    <div className="text-sm text-slate-400">Pool Registry</div>
+                  </div>
+                </div>
+                <div className="text-sm text-green-400 font-medium">Active</div>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-8">
+      <div className="grid lg:grid-cols-1 gap-8">
         {/* Top Performing Pools */}
         <div className="bg-slate-800/60 backdrop-blur-xl border border-slate-700/40 rounded-3xl p-8">
           <h2 className="text-2xl font-bold text-white mb-6">
             Top Performing Pools
           </h2>
-          <div className="space-y-4">
-            {topPools.map((pool, index) => (
-              <div
-                key={pool.id}
-                className="flex items-center justify-between p-4 bg-slate-900/30 rounded-xl border border-slate-600/20"
-              >
-                <div className="flex items-center space-x-4">
-                  <div className="text-lg font-bold text-slate-400">
-                    #{index + 1}
-                  </div>
-                  <div className="w-10 h-10 bg-gradient-to-r from-red-500/20 to-orange-500/20 rounded-xl flex items-center justify-center">
-                    <Building2 className="w-5 h-5 text-orange-400/80" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-slate-200">
-                      {pool.name}
-                    </div>
-                    <div className="text-sm text-slate-400">
-                      {pool.investors} investors
-                    </div>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="font-bold text-slate-200">
-                    {formatCurrency(pool.tvl)}
-                  </div>
-                  <div className="text-sm text-orange-400">{pool.apy}% APY</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Recent Activity */}
-        <div className="bg-slate-800/60 backdrop-blur-xl border border-slate-700/40 rounded-3xl p-8">
-          <h2 className="text-2xl font-bold text-white mb-6">
-            Recent Activity
-          </h2>
-          <div className="space-y-4">
-            {recentActivity.map((activity) => {
-              const ActivityIcon = getActivityIcon(activity.type);
-              const colorClass = getActivityColor(activity.status);
-
-              return (
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
+              <span className="ml-2 text-slate-400">Loading pools...</span>
+            </div>
+          ) : topPools.length === 0 ? (
+            <div className="text-center py-12">
+              <Target className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+              <p className="text-slate-400">No pools created yet</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {topPools.map((pool, index) => (
                 <div
-                  key={activity.id}
-                  className="flex items-start space-x-4 p-4 bg-slate-900/30 rounded-xl border border-slate-600/20"
+                  key={pool._id}
+                  className="flex items-center justify-between p-4 bg-slate-900/30 rounded-xl border border-slate-600/20"
                 >
-                  <div
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center bg-slate-800/50`}
-                  >
-                    <ActivityIcon className={`w-5 h-5 ${colorClass}`} />
+                  <div className="flex items-center space-x-4">
+                    <div className="text-lg font-bold text-slate-400">
+                      #{index + 1}
+                    </div>
+                    <div className="w-10 h-10 bg-gradient-to-r from-red-500/20 to-orange-500/20 rounded-xl flex items-center justify-center">
+                      <Building2 className="w-5 h-5 text-orange-400/80" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-slate-200">
+                        {pool.name}
+                      </div>
+                      <div className="text-sm text-slate-400">
+                        By {pool.issuer}
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-slate-200">
-                      {activity.title}
+                  <div className="text-right">
+                    <div className="font-bold text-slate-200">
+                      {formatCurrency(pool.totalRaised)}
                     </div>
-                    <div className="text-sm text-slate-400 truncate">
-                      {activity.description}
-                    </div>
-                    <div className="text-xs text-slate-500 mt-1">
-                      {new Date(activity.timestamp).toLocaleDateString()} at{" "}
-                      {new Date(activity.timestamp).toLocaleTimeString()}
+                    <div className="text-sm text-orange-400">
+                      {pool.instrumentType === InstrumentType.DISCOUNTED &&
+                      pool.discountRate
+                        ? `${pool.discountRate}% Discount`
+                        : pool.couponRates
+                          ? `${pool.couponRates.reduce((sum, rate) => sum + rate, 0)}% APY`
+                          : "N/A"}
                     </div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
