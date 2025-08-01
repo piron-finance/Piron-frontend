@@ -35,11 +35,7 @@ export default function AdminDashboard() {
     isLoadingActivePools,
     refetch: refetchRegistry,
   } = useRegistryContract();
-  const {
-    poolCount,
-    isLoadingPoolCount,
-    refetch: refetchFactory,
-  } = useFactoryContract();
+  const { isLoadingPoolCount, refetch: refetchFactory } = useFactoryContract();
   const { pools, isLoading: isLoadingPools } = useMultiplePoolContracts(
     (allPools as `0x${string}`[]) || []
   );
@@ -57,16 +53,13 @@ export default function AdminDashboard() {
   const isLoading =
     isLoadingActivePools || isLoadingPools || isLoadingPoolCount;
 
-  // Calculate real metrics from contract data
   const totalTVL =
     pools?.reduce((sum, pool) => sum + parseFloat(pool.totalRaised), 0) || 0;
-  const totalPools = pools?.length || 0;
-  const activePoolsCount =
-    pools?.filter(
-      (pool) =>
-        pool.status === PoolStatus.FUNDING ||
-        pool.status === PoolStatus.INVESTED
-    ).length || 0;
+
+  const totalPools = allPools.length || 0;
+
+  const activePoolsCount = activePools?.length || 0;
+
   const maturedPoolsCount =
     pools?.filter((pool) => pool.status === PoolStatus.MATURED).length || 0;
   const pendingPoolsCount =

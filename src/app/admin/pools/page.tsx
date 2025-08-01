@@ -2,14 +2,15 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useUser } from "@clerk/nextjs";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "../../../../convex/_generated/api";
+import { Id } from "../../../../convex/_generated/dataModel";
 import {
   Plus,
   Search,
-  Filter,
-  MoreVertical,
   Eye,
   Edit,
-  Trash2,
   Play,
   Pause,
   CheckCircle,
@@ -17,202 +18,153 @@ import {
   AlertCircle,
   DollarSign,
   Users,
-  Calendar,
-  TrendingUp,
   Building2,
   Target,
-  ArrowUpRight,
-  ArrowDownRight,
   RefreshCw,
   Download,
+  Loader2,
 } from "lucide-react";
+import {
+  formatCurrency,
+  getPoolStatusColor,
+  getPoolStatusLabel,
+} from "@/lib/utils";
+import { PoolStatus } from "@/types";
 
-// Mock pool data for admin management
-const mockPools = [
-  {
-    id: "1",
-    name: "Nigerian Treasury Bills Q3 2025",
-    symbol: "NTB-Q3-25",
-    issuer: "Central Bank of Nigeria",
-    status: "FUNDING",
-    instrumentType: "DISCOUNTED",
-    targetRaise: 5000000,
-    totalRaised: 3750000,
-    fundingProgress: 75,
-    epochEndTime: "2025-04-15T23:59:59",
-    maturityDate: "2025-09-15",
-    discountRate: 24.2,
-    minimumInvestment: 1000,
-    totalInvestors: 847,
-    riskLevel: "Very Low",
-    category: "Government",
-    createdAt: "2025-03-01T10:00:00",
-    isActive: true,
-  },
-  {
-    id: "2",
-    name: "MTN Group Corporate Bond Series 4",
-    symbol: "MTN-CB-S4",
-    issuer: "MTN Group Limited",
-    status: "INVESTED",
-    instrumentType: "INTEREST_BEARING",
-    targetRaise: 10000000,
-    totalRaised: 10000000,
-    fundingProgress: 100,
-    epochEndTime: "2024-11-30T23:59:59",
-    maturityDate: "2026-12-31",
-    couponRate: 16.8,
-    minimumInvestment: 5000,
-    totalInvestors: 1234,
-    riskLevel: "Low",
-    category: "Corporate",
-    createdAt: "2024-11-01T14:30:00",
-    isActive: true,
-  },
-  {
-    id: "3",
-    name: "Dangote Commercial Paper 2025-A",
-    symbol: "DCP-2025A",
-    issuer: "Dangote Industries Limited",
-    status: "MATURED",
-    instrumentType: "DISCOUNTED",
-    targetRaise: 7500000,
-    totalRaised: 7500000,
-    fundingProgress: 100,
-    epochEndTime: "2024-08-15T23:59:59",
-    maturityDate: "2025-01-30",
-    discountRate: 21.5,
-    minimumInvestment: 2500,
-    totalInvestors: 567,
-    riskLevel: "Medium",
-    category: "Commercial",
-    createdAt: "2024-07-15T09:15:00",
-    isActive: true,
-  },
-  {
-    id: "4",
-    name: "Access Bank Fixed Deposit Premium",
-    symbol: "ABP-FD-24",
-    issuer: "Access Bank PLC",
-    status: "EMERGENCY",
-    instrumentType: "INTEREST_BEARING",
-    targetRaise: 3000000,
-    totalRaised: 1200000,
-    fundingProgress: 40,
-    epochEndTime: "2024-10-31T23:59:59",
-    maturityDate: "2025-10-31",
-    couponRate: 14.5,
-    minimumInvestment: 1000,
-    totalInvestors: 234,
-    riskLevel: "Very Low",
-    category: "Banking",
-    createdAt: "2024-09-01T11:45:00",
-    isActive: false,
-  },
-  {
-    id: "5",
-    name: "Zenith Bank Commercial Paper Q1",
-    symbol: "ZB-CP-Q1",
-    issuer: "Zenith Bank PLC",
-    status: "PENDING_INVESTMENT",
-    instrumentType: "DISCOUNTED",
-    targetRaise: 4000000,
-    totalRaised: 4000000,
-    fundingProgress: 100,
-    epochEndTime: "2025-02-28T23:59:59",
-    maturityDate: "2025-05-15",
-    discountRate: 19.8,
-    minimumInvestment: 1500,
-    totalInvestors: 456,
-    riskLevel: "Low",
-    category: "Banking",
-    createdAt: "2025-01-15T16:20:00",
-    isActive: true,
-  },
-];
-
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case "FUNDING":
-      return "bg-blue-500/20 text-blue-300 border border-blue-500/30";
-    case "PENDING_INVESTMENT":
-      return "bg-yellow-500/20 text-yellow-300 border border-yellow-500/30";
-    case "INVESTED":
-      return "bg-green-500/20 text-green-300 border border-green-500/30";
-    case "MATURED":
-      return "bg-purple-500/20 text-purple-300 border border-purple-500/30";
-    case "EMERGENCY":
-      return "bg-red-500/20 text-red-300 border border-red-500/30";
-    default:
-      return "bg-slate-500/20 text-slate-300 border border-slate-500/30";
-  }
+type ConvexPool = {
+  _id: string;
+  _creationTime: number;
+  contractAddress: string;
+  managerAddress: string;
+  escrowAddress: string;
+  name: string;
+  symbol?: string;
+  asset?: string;
+  instrumentType: "DISCOUNTED" | "INTEREST_BEARING";
+  status:
+    | "FUNDING"
+    | "PENDING_INVESTMENT"
+    | "INVESTED"
+    | "MATURED"
+    | "EMERGENCY";
+  targetRaise: string;
+  totalRaised: string;
+  actualInvested?: string;
+  discountRate?: number;
+  couponRates?: number[];
+  couponDates?: number[];
+  epochEndTime: number;
+  maturityDate: number;
+  issuer: string;
+  riskLevel: "Low" | "Medium" | "High";
+  minInvestment: string;
+  description?: string;
+  createdBy: string;
+  approvedBy?: string;
+  approvalStatus: "PENDING" | "APPROVED" | "REJECTED";
+  rejectionReason?: string;
+  isActive: boolean;
+  createdAt: number;
+  updatedAt: number;
+  creator: { name?: string; email: string } | null;
+  approver: { name?: string; email: string } | null;
 };
 
-const getStatusIcon = (status: string) => {
+const getStatusIcon = (status: PoolStatus) => {
   switch (status) {
-    case "FUNDING":
+    case PoolStatus.FUNDING:
       return Clock;
-    case "PENDING_INVESTMENT":
+    case PoolStatus.PENDING_INVESTMENT:
       return AlertCircle;
-    case "INVESTED":
+    case PoolStatus.INVESTED:
       return CheckCircle;
-    case "MATURED":
+    case PoolStatus.MATURED:
       return Target;
-    case "EMERGENCY":
+    case PoolStatus.EMERGENCY:
       return AlertCircle;
     default:
       return Clock;
   }
-};
-
-const getRiskColor = (risk: string) => {
-  switch (risk) {
-    case "Very Low":
-      return "text-emerald-400";
-    case "Low":
-      return "text-green-400";
-    case "Medium":
-      return "text-yellow-400";
-    case "High":
-      return "text-orange-400";
-    case "Very High":
-      return "text-red-400";
-    default:
-      return "text-slate-400";
-  }
-};
-
-const formatCurrency = (amount: number) => {
-  if (amount >= 1000000000) return `$${(amount / 1000000000).toFixed(1)}B`;
-  if (amount >= 1000000) return `$${(amount / 1000000).toFixed(1)}M`;
-  if (amount >= 1000) return `$${(amount / 1000).toFixed(1)}K`;
-  return `$${amount.toLocaleString()}`;
 };
 
 export default function ManagePoolsPage() {
-  const [pools, setPools] = useState(mockPools);
+  const { user } = useUser();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [selectedPools, setSelectedPools] = useState<string[]>([]);
 
-  const filteredPools = pools.filter((pool) => {
-    const matchesSearch =
-      pool.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      pool.issuer.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      pool.symbol.toLowerCase().includes(searchQuery.toLowerCase());
+  const pools = useQuery(
+    api.admin.getAllPoolsForAdmin,
+    user?.id ? { adminClerkId: user.id } : "skip"
+  );
 
-    const matchesStatus =
-      statusFilter === "all" || pool.status === statusFilter;
-    const matchesCategory =
-      categoryFilter === "all" || pool.category === categoryFilter;
+  const [refreshing, setRefreshing] = useState(false);
 
-    return matchesSearch && matchesStatus && matchesCategory;
-  });
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    // The useQuery will automatically refetch when dependencies change
+    setTimeout(() => setRefreshing(false), 1000);
+  };
 
-  const handlePoolAction = (poolId: string, action: string) => {
-    console.log(`Performing ${action} on pool ${poolId}`);
-    // Here you would implement the actual pool management actions
+  const filteredPools = pools
+    ? pools.filter((pool: ConvexPool) => {
+        const matchesSearch =
+          pool.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          pool.issuer.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (pool.symbol &&
+            pool.symbol.toLowerCase().includes(searchQuery.toLowerCase()));
+
+        const poolStatus = pool.status as keyof typeof PoolStatus;
+        const matchesStatus =
+          statusFilter === "all" ||
+          getPoolStatusLabel(PoolStatus[poolStatus]).toLowerCase() ===
+            statusFilter.toLowerCase();
+
+        const poolCategory =
+          pool.instrumentType === "DISCOUNTED" ? "government" : "corporate";
+        const matchesCategory =
+          categoryFilter === "all" ||
+          poolCategory === categoryFilter.toLowerCase();
+
+        return matchesSearch && matchesStatus && matchesCategory;
+      })
+    : [];
+
+  const togglePoolActive = useMutation(api.admin.togglePoolActive);
+  const updatePoolStatus = useMutation(api.admin.updatePoolStatus);
+
+  const handlePoolAction = async (poolId: string, action: string) => {
+    if (!user?.id) return;
+
+    try {
+      switch (action) {
+        case "pause":
+        case "activate":
+          await togglePoolActive({
+            adminClerkId: user.id,
+            poolId: poolId as Id<"pools">,
+            reason: `Pool ${action}d by admin`,
+          });
+          break;
+        case "emergency":
+          await updatePoolStatus({
+            adminClerkId: user.id,
+            poolId: poolId as Id<"pools">,
+            newStatus: "EMERGENCY",
+            reason: "Emergency action triggered by admin",
+          });
+          break;
+        case "edit":
+          // Navigate to edit page
+          window.location.href = `/admin/pools/${poolId}/edit`;
+          break;
+        default:
+          console.log(`Action ${action} not implemented yet`);
+      }
+    } catch (error) {
+      console.error(`Error performing ${action} on pool ${poolId}:`, error);
+    }
   };
 
   const handleBulkAction = (action: string) => {
@@ -232,7 +184,7 @@ export default function ManagePoolsPage() {
     setSelectedPools(
       selectedPools.length === filteredPools.length
         ? []
-        : filteredPools.map((pool) => pool.id)
+        : filteredPools.map((pool) => pool._id)
     );
   };
 
@@ -247,8 +199,14 @@ export default function ManagePoolsPage() {
           </p>
         </div>
         <div className="flex items-center space-x-4">
-          <button className="flex items-center space-x-2 px-4 py-2 bg-slate-800/50 hover:bg-slate-700/50 border border-slate-600/30 rounded-xl text-slate-300 transition-colors">
-            <RefreshCw className="w-4 h-4" />
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center space-x-2 px-4 py-2 bg-slate-800/50 hover:bg-slate-700/50 border border-slate-600/30 rounded-xl text-slate-300 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw
+              className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`}
+            />
             <span>Refresh</span>
           </button>
           <button className="flex items-center space-x-2 px-4 py-2 bg-slate-800/50 hover:bg-slate-700/50 border border-slate-600/30 rounded-xl text-slate-300 transition-colors">
@@ -275,9 +233,9 @@ export default function ManagePoolsPage() {
             <div className="text-slate-400 text-sm">Total</div>
           </div>
           <div className="text-3xl font-bold text-white mb-1">
-            {pools.length}
+            {pools ? pools.length : 0}
           </div>
-          <div className="text-sm text-slate-400">Active Pools</div>
+          <div className="text-sm text-slate-400">Total Pools</div>
         </div>
 
         <div className="bg-slate-800/60 backdrop-blur-xl border border-slate-700/40 rounded-3xl p-6">
@@ -288,9 +246,17 @@ export default function ManagePoolsPage() {
             <div className="text-slate-400 text-sm">TVL</div>
           </div>
           <div className="text-3xl font-bold text-white mb-1">
-            {formatCurrency(
-              pools.reduce((sum, pool) => sum + pool.totalRaised, 0)
-            )}
+            {pools
+              ? formatCurrency(
+                  pools
+                    .reduce(
+                      (sum: number, pool: ConvexPool) =>
+                        sum + parseFloat(pool.totalRaised || "0"),
+                      0
+                    )
+                    .toString()
+                )
+              : "$0"}
           </div>
           <div className="text-sm text-slate-400">Total Value Locked</div>
         </div>
@@ -304,10 +270,10 @@ export default function ManagePoolsPage() {
           </div>
           <div className="text-3xl font-bold text-white mb-1">
             {pools
-              .reduce((sum, pool) => sum + pool.totalInvestors, 0)
-              .toLocaleString()}
+              ? pools.filter((p: ConvexPool) => p.status === "FUNDING").length
+              : 0}
           </div>
-          <div className="text-sm text-slate-400">Total Investors</div>
+          <div className="text-sm text-slate-400">Funding Pools</div>
         </div>
 
         <div className="bg-slate-800/60 backdrop-blur-xl border border-slate-700/40 rounded-3xl p-6">
@@ -318,9 +284,11 @@ export default function ManagePoolsPage() {
             <div className="text-slate-400 text-sm">Funding</div>
           </div>
           <div className="text-3xl font-bold text-white mb-1">
-            {pools.filter((p) => p.status === "FUNDING").length}
+            {pools
+              ? pools.filter((p: ConvexPool) => p.status === "MATURED").length
+              : 0}
           </div>
-          <div className="text-sm text-slate-400">Active Funding</div>
+          <div className="text-sm text-slate-400">Completed Pools</div>
         </div>
       </div>
 
@@ -428,135 +396,156 @@ export default function ManagePoolsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-700/40">
-              {filteredPools.map((pool) => {
-                const StatusIcon = getStatusIcon(pool.status);
-                const isSelected = selectedPools.includes(pool.id);
+              {pools === undefined ? (
+                <tr>
+                  <td colSpan={8} className="px-6 py-12 text-center">
+                    <div className="flex items-center justify-center space-x-2">
+                      <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+                      <span className="text-slate-400">Loading pools...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredPools.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-6 py-12 text-center">
+                    <div className="text-slate-400">
+                      {pools.length === 0
+                        ? "No pools found"
+                        : "No pools match your filters"}
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filteredPools.map((pool: ConvexPool) => {
+                  const poolStatus = pool.status as keyof typeof PoolStatus;
+                  const StatusIcon = getStatusIcon(PoolStatus[poolStatus]);
+                  const isSelected = selectedPools.includes(pool._id);
+                  const fundingProgress = Math.round(
+                    (parseFloat(pool.totalRaised) /
+                      parseFloat(pool.targetRaise)) *
+                      100
+                  );
 
-                return (
-                  <tr
-                    key={pool.id}
-                    className={`hover:bg-slate-700/20 transition-colors ${
-                      isSelected ? "bg-slate-700/30" : ""
-                    }`}
-                  >
-                    <td className="px-6 py-4">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => togglePoolSelection(pool.id)}
-                        className="rounded border-slate-600 bg-slate-800 text-orange-500 focus:ring-orange-500"
-                      />
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-gradient-to-r from-red-500/20 to-orange-500/20 rounded-xl flex items-center justify-center">
-                          <Building2 className="w-5 h-5 text-orange-400/80" />
+                  return (
+                    <tr
+                      key={pool._id}
+                      className={`hover:bg-slate-700/20 transition-colors ${
+                        isSelected ? "bg-slate-700/30" : ""
+                      }`}
+                    >
+                      <td className="px-6 py-4">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => togglePoolSelection(pool._id)}
+                          className="rounded border-slate-600 bg-slate-800 text-orange-500 focus:ring-orange-500"
+                        />
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 bg-gradient-to-r from-red-500/20 to-orange-500/20 rounded-xl flex items-center justify-center">
+                            <Building2 className="w-5 h-5 text-orange-400/80" />
+                          </div>
+                          <div>
+                            <div className="font-semibold text-slate-200">
+                              {pool.name}
+                            </div>
+                            <div className="text-sm text-slate-400">
+                              {pool.issuer}
+                            </div>
+                          </div>
                         </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`inline-flex items-center space-x-2 px-3 py-1 rounded-full text-sm font-semibold ${getPoolStatusColor(PoolStatus[poolStatus])}`}
+                        >
+                          <StatusIcon className="w-4 h-4" />
+                          <span>
+                            {getPoolStatusLabel(PoolStatus[poolStatus])}
+                          </span>
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="w-24">
+                          <div className="flex items-center justify-between text-sm mb-1">
+                            <span className="text-slate-400">
+                              {fundingProgress}%
+                            </span>
+                          </div>
+                          <div className="w-full bg-slate-700/50 rounded-full h-2">
+                            <div
+                              className="bg-gradient-to-r from-orange-500 to-red-500 h-2 rounded-full transition-all duration-300"
+                              style={{
+                                width: `${Math.min(fundingProgress, 100)}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
                         <div>
                           <div className="font-semibold text-slate-200">
-                            {pool.name}
+                            {formatCurrency(pool.totalRaised)}
                           </div>
                           <div className="text-sm text-slate-400">
-                            {pool.issuer}
+                            of {formatCurrency(pool.targetRaise)}
                           </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex items-center space-x-2 px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(pool.status)}`}
-                      >
-                        <StatusIcon className="w-4 h-4" />
-                        <span>{pool.status.replace("_", " ")}</span>
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="w-24">
-                        <div className="flex items-center justify-between text-sm mb-1">
-                          <span className="text-slate-400">
-                            {pool.fundingProgress}%
-                          </span>
-                        </div>
-                        <div className="w-full bg-slate-700/50 rounded-full h-2">
-                          <div
-                            className="bg-gradient-to-r from-orange-500 to-red-500 h-2 rounded-full transition-all duration-300"
-                            style={{ width: `${pool.fundingProgress}%` }}
-                          />
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div>
-                        <div className="font-semibold text-slate-200">
-                          {formatCurrency(pool.totalRaised)}
-                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="font-semibold text-slate-200">N/A</div>
+                      </td>
+                      <td className="px-6 py-4">
                         <div className="text-sm text-slate-400">
-                          of {formatCurrency(pool.targetRaise)}
+                          {new Date(
+                            pool.maturityDate * 1000
+                          ).toLocaleDateString()}
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="font-semibold text-slate-200">
-                        {pool.totalInvestors.toLocaleString()}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-slate-400">
-                        {new Date(pool.maturityDate).toLocaleDateString()}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center space-x-2">
-                        <Link
-                          href={`/admin/pools/${pool.id}`}
-                          className="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors"
-                          title="View Details"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Link>
-                        <button
-                          onClick={() => handlePoolAction(pool.id, "edit")}
-                          className="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors"
-                          title="Edit Pool"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() =>
-                            handlePoolAction(
-                              pool.id,
-                              pool.isActive ? "pause" : "activate"
-                            )
-                          }
-                          className="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors"
-                          title={pool.isActive ? "Pause Pool" : "Activate Pool"}
-                        >
-                          {pool.isActive ? (
-                            <Pause className="w-4 h-4" />
-                          ) : (
-                            <Play className="w-4 h-4" />
-                          )}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center space-x-2">
+                          <Link
+                            href={`/admin/pools/${pool._id}`}
+                            className="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors"
+                            title="View Details"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Link>
+                          <button
+                            onClick={() => handlePoolAction(pool._id, "edit")}
+                            className="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors"
+                            title="Edit Pool"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() =>
+                              handlePoolAction(
+                                pool._id,
+                                pool.isActive ? "pause" : "activate"
+                              )
+                            }
+                            className="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors"
+                            title={
+                              pool.isActive ? "Pause Pool" : "Activate Pool"
+                            }
+                          >
+                            {pool.isActive ? (
+                              <Pause className="w-4 h-4" />
+                            ) : (
+                              <Play className="w-4 h-4" />
+                            )}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
-
-        {filteredPools.length === 0 && (
-          <div className="text-center py-12">
-            <Target className="w-12 h-12 text-slate-500 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-slate-400 mb-2">
-              No pools found
-            </h3>
-            <p className="text-slate-500">
-              Try adjusting your search or filter criteria.
-            </p>
-          </div>
-        )}
       </div>
     </div>
   );

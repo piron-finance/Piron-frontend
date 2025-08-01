@@ -9,13 +9,8 @@ import {
   Plus,
   Trash2,
   AlertCircle,
-  Calendar,
-  DollarSign,
   Target,
-  Percent,
-  Building2,
   FileText,
-  Clock,
   Users,
   CheckCircle,
   ExternalLink,
@@ -35,6 +30,7 @@ const INSTRUMENT_TYPES = [
 ];
 
 const ASSET_TOKENS = [
+  // this should be based on current chain but not important for npw
   {
     value: "0x9E12AD42c4E4d2acFBADE01a96446e48e6764B98",
     label: "USDT (Morph Holesky)",
